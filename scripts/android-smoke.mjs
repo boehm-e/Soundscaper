@@ -145,6 +145,12 @@ try {
 	} catch (error) {
 		await writeFile(resolve(evidence, 'logcat-unavailable.txt'), String(error));
 	}
-	await device.close();
+	// Playwright's Android close path can leave its instrumentation socket open.
+	// Stop the test driver while the device is live so the standalone CLI exits.
+	try {
+		adb('shell', 'am', 'force-stop', 'com.microsoft.playwright.androiddriver');
+	} finally {
+		await device.close();
+	}
 }
 console.log(JSON.stringify(report, null, 2));

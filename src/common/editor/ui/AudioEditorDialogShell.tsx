@@ -8,6 +8,7 @@ import React, {
 	useRef,
 	useState,
 } from 'react';
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 import { DialogHeader } from '@soundscaper/design-system/DialogHeader';
 
 import AudioEditorResizableSurface from './AudioEditorResizableSurface.jsx';
@@ -148,6 +149,7 @@ export default function AudioEditorDialogShell({
 				&& event.target.closest('button, input, select, textarea, a'))
 		) return;
 		event.preventDefault();
+		const pointerId = 'pointerId' in event && typeof event.pointerId === 'number' ? event.pointerId : undefined;
 		stopDragging();
 		dragRef.current = {
 			startX: event.clientX,
@@ -176,7 +178,8 @@ export default function AudioEditorDialogShell({
 				stopDragging();
 				if (original) setDragOffset(original);
 			},
-		});
+		}, pointerId);
+		if (pointerId !== undefined) event.currentTarget.setPointerCapture(pointerId);
 	};
 
 	useEffect(() => () => stopDragging(), [stopDragging]);
@@ -287,6 +290,11 @@ export default function AudioEditorDialogShell({
 					{...headerProps}
 					onClose={onClose}
 					onMouseDown={handleHeaderMouseDown}
+					onPointerDown={event => {
+						if (event.pointerType === 'mouse') return;
+						if (!isPrimaryPointer(event) || dragRef.current) { event.preventDefault(); return; }
+						handleHeaderMouseDown(event);
+					}}
 				/>
 				{headerSlot}
 				{body}

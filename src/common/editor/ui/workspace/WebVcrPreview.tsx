@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import {
 	useEffect,
@@ -137,7 +138,7 @@ export default function WebVcrPreview({
 		handle: WebVcrCropHandle,
 	): void => {
 		if (manualCropDisabled || !snapshot.surface || event.button !== 0
-			|| event.isPrimary === false || dragRef.current) return;
+			|| !isPrimaryPointer(event) || dragRef.current) return;
 		event.preventDefault();
 		event.currentTarget.setPointerCapture(event.pointerId);
 		dragRef.current = {

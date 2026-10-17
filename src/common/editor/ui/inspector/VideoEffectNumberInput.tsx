@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import { useEffect, useRef, useState } from 'react';
 
@@ -49,7 +50,7 @@ export default function VideoEffectNumberInput({ value, minimum, maximum, step, 
 	return <input type="number" value={draft} min={minimum} max={maximum} step={step}
 		aria-label={label} disabled={disabled} onFocus={begin} onPointerDown={(event) => {
 			if (disabled || event.button !== 0) return;
-			if (event.isPrimary === false || pointerOwner.current !== null) { event.preventDefault(); return; }
+			if (!isPrimaryPointer(event) || pointerOwner.current !== null) { event.preventDefault(); return; }
 			pointerOwner.current = event.pointerId;
 			event.currentTarget.setPointerCapture?.(event.pointerId);
 			begin();

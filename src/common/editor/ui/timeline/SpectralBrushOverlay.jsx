@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import { useRef, useState } from 'react';
 import { CLIP_CONTENT_OFFSET } from '@soundscaper/design-system/constants';
@@ -67,7 +68,7 @@ export function SpectralBrushOverlay({
 		};
 	};
 	const begin = (event) => {
-		if (disabled || event.button !== 0 || event.isPrimary === false || dragRef.current) return;
+		if (disabled || event.button !== 0 || !isPrimaryPointer(event) || dragRef.current) return;
 		stopEvent(event);
 		const point = pointerPosition(event);
 		dragRef.current = { pointerId: event.pointerId, ...point };

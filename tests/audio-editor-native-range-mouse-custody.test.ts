@@ -46,6 +46,21 @@ test('native mouse custody cancellation and disposal retire only their own lease
 	});
 });
 
+test('native pen custody preserves thumb input and owns only its initiating pointer', () => {
+	withDocument(f => {
+		let completed = 0;
+		retainNativeRangeMouseCustody(document, 7, { pointerType: 'pen',
+			finish: () => { completed++; }, cancel: () => assert.fail('Unexpected cancellation') });
+		const move = f.emit('pointermove', 7, 'pen', -1, 1);
+		assert.equal(move.defaultPrevented, false);
+		f.emit('pointerup', 8, 'pen', 0, 0);
+		f.emit('pointerup', 7, 'touch', 0, 0);
+		assert.equal(completed, 0);
+		f.emit('pointerup', 7, 'pen', 0, 0);
+		assert.equal(completed, 1); assert.equal(f.listenerCount(), 0);
+	});
+});
+
 function withDocument(run: (fixture: Readonly<{
 	emit(kind: string, pointerId: number, pointerType: string, button: number, buttons: number): Event;
 	listenerCount(): number;

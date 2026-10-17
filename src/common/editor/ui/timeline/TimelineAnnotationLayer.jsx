@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import React, { useCallback, useRef, useState } from 'react';
 import { CLIP_CONTENT_OFFSET } from '@soundscaper/design-system/constants';
@@ -98,7 +99,7 @@ export function TimelineAnnotationLayer({
 		? timelineAnnotationRegionWidth(editingRow.annotation.durationFrames, pixelsPerSecond, sampleRate)
 		: 2;
 	const pointerDown = (event, eventRow) => {
-		if (blocked || event.button !== 0 || event.isPrimary === false || dragRef.current || event.target.closest?.('input')) return;
+		if (blocked || event.button !== 0 || !isPrimaryPointer(event) || dragRef.current || event.target.closest?.('input')) return;
 		const edge = timelineAnnotationPointerEdge(event.target.dataset?.annotationEdge);
 		let row = eventRow;
 		if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {

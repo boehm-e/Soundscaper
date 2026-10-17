@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { useNativeRangeTouchOwner } from '../useNativeRangeTouchOwner.ts';
@@ -99,7 +100,7 @@ export function SteppedSlider({ value, defaultValue, min, max, step, ariaLabel, 
 					if (standalone) endGesture();
 				}}
 				onPointerDown={(event) => {
-					if (disabled || event.button !== 0 || event.isPrimary === false || pointerActiveRef.current) {
+					if (disabled || event.button !== 0 || !isPrimaryPointer(event) || pointerActiveRef.current) {
 						event.preventDefault();
 						return;
 					}

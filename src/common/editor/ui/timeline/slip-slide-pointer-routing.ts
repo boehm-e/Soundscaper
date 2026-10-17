@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import type {
 	FrameCanonicalSlipSlideMode,
@@ -141,7 +142,7 @@ function pointerMode(
 ): FrameCanonicalSlipSlideMode | null {
 	if (input.session.kind !== 'move'
 		|| input.canonicalVideoTrim !== true
-		|| input.isPrimary !== true
+		|| !isPrimaryPointer(input)
 		|| input.pointerType === 'touch'
 		|| input.altKey !== true
 		|| input.ctrlKey

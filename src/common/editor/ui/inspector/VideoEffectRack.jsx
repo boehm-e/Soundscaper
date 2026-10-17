@@ -1,3 +1,4 @@
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNativeRangeTouchOwner } from '../useNativeRangeTouchOwner.ts';
 import { retainNativeRangeMouseCustody } from '../../controller/effects/native-range-mouse-custody.ts';
@@ -182,7 +183,7 @@ function VideoEffectSlider({ clipId, effectId, name, parameter, value, actions, 
 	};
 	const pointerDown = (event) => {
 		if (event.button !== 0) return;
-		if (event.isPrimary === false || !pointer.begin(event.pointerId)) { event.preventDefault(); return; }
+		if (!isPrimaryPointer(event) || !pointer.begin(event.pointerId)) { event.preventDefault(); return; }
 		if (event.pointerType === 'mouse') {
 			mouseCustody.current?.();
 			mouseCustody.current = retainNativeRangeMouseCustody(event.currentTarget.ownerDocument, event.pointerId, {

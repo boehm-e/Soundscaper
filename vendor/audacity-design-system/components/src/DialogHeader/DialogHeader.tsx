@@ -36,6 +36,7 @@ export interface DialogHeaderProps {
    * Mouse down handler for dragging
    */
   onMouseDown?: (e: React.MouseEvent) => void;
+  onPointerDown?: (e: React.PointerEvent) => void;
   /**
    * Operating system for platform-specific header controls
    * @default 'macos'
@@ -58,12 +59,14 @@ export function DialogHeader({
   isMaximized = false,
   onMaximize,
   onMouseDown,
+  onPointerDown,
   os = 'macos',
   className = '',
 }: DialogHeaderProps) {
   const { theme } = useTheme();
 
   const style = {
+    touchAction: onPointerDown ? 'none' : undefined,
     '--dialog-header-bg': theme.background.surface.default,
     '--dialog-header-border': theme.border.default,
     '--dialog-header-text': theme.foreground.text.primary,
@@ -73,7 +76,7 @@ export function DialogHeader({
   // macOS variant - traffic lights on left
   if (os === 'macos') {
     return (
-      <div className={`dialog-header dialog-header--macos ${className}`} onMouseDown={onMouseDown} style={style}>
+      <div className={`dialog-header dialog-header--macos ${className}`} onMouseDown={onMouseDown} onPointerDown={onPointerDown} style={style}>
         <div className="dialog-header__macos-controls">
           {onClose && (
             <button
@@ -114,7 +117,7 @@ export function DialogHeader({
 
   // Windows variant - controls on right
   return (
-    <div className={`dialog-header dialog-header--windows ${className}`} onMouseDown={onMouseDown} style={style}>
+    <div className={`dialog-header dialog-header--windows ${className}`} onMouseDown={onMouseDown} onPointerDown={onPointerDown} style={style}>
       <div className="dialog-header__windows-title">
         {logo && (
           <img

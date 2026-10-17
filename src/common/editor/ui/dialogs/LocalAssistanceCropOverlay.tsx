@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
 
@@ -29,7 +30,7 @@ export default function DraggableCropOverlay({ crop, label, onCrop }: Readonly<{
 	};
 	return <div className="kw-local-assistance__crop-overlay" aria-label={label}
 		onPointerDown={(event) => {
-			if (event.button !== 0 || event.isPrimary === false || activePointer.current !== null) return;
+			if (event.button !== 0 || !isPrimaryPointer(event) || activePointer.current !== null) return;
 			event.currentTarget.setPointerCapture(event.pointerId);
 			activePointer.current = event.pointerId;
 			move(event);

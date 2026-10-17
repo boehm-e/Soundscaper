@@ -1,3 +1,4 @@
+import { isPrimaryPointer } from '../utils/pointerInput';
 import React from 'react';
 import { useTheme } from '../ThemeProvider';
 import { retainNativeRangeTouchOwner } from './native-range-touch-owner';
@@ -139,7 +140,7 @@ export const Slider: React.FC<SliderProps> = ({
         value={clampedValue}
         onChange={handleChange}
         onPointerDown={(event) => {
-          if (disabled || event.button !== 0 || event.isPrimary === false || pointerIdRef.current !== null) {
+          if (disabled || event.button !== 0 || !isPrimaryPointer(event) || pointerIdRef.current !== null) {
             event.preventDefault();
             return;
           }

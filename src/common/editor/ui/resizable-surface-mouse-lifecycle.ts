@@ -9,15 +9,27 @@ export function retainResizableSurfaceMouseLifecycle(
 		finish(): void;
 		cancel(): void;
 	}>,
+	pointerId?: number,
 ): () => void {
-	const finish = (event: MouseEvent) => { if (event.button === 0) callbacks.finish(); };
+	const owns = (event: MouseEvent) => pointerId === undefined || ('pointerId' in event && event.pointerId === pointerId);
+	const move = (event: MouseEvent) => { if (owns(event)) callbacks.move(event); };
+	const finish = (event: MouseEvent) => { if (owns(event) && event.button === 0) callbacks.finish(); };
+	const cancel = (event: PointerEvent) => { if (event.pointerId === pointerId) callbacks.cancel(); };
+	const moveType = pointerId === undefined ? 'mousemove' : 'pointermove';
+	const upType = pointerId === undefined ? 'mouseup' : 'pointerup';
 	const releaseEscape = retainAudioEditorDialogEscapeOwner(document, callbacks.cancel);
-	document.addEventListener('mousemove', callbacks.move);
-	document.addEventListener('mouseup', finish);
+	document.addEventListener(moveType, move);
+	document.addEventListener(upType, finish);
+	if (pointerId !== undefined) {
+		document.addEventListener('pointercancel', cancel);
+		document.addEventListener('lostpointercapture', cancel);
+	}
 	return () => {
 		releaseEscape();
-		document.removeEventListener('mousemove', callbacks.move);
-		document.removeEventListener('mouseup', finish);
+		document.removeEventListener(moveType, move);
+		document.removeEventListener(upType, finish);
+		document.removeEventListener('pointercancel', cancel);
+		document.removeEventListener('lostpointercapture', cancel);
 		callbacks.cancel();
 	};
 }

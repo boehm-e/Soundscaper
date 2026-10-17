@@ -11,18 +11,28 @@ export function retainDialogMoveLifecycle(
 		finish(): void;
 		cancel(): void;
 	}>,
+	pointerId?: number,
 ): () => void {
 	let active = true;
-	const move = (event: MouseEvent) => { if (active) callbacks.move(event); };
+	const owns = (event: MouseEvent) => pointerId === undefined || ('pointerId' in event && event.pointerId === pointerId);
+	const move = (event: MouseEvent) => { if (active && owns(event)) callbacks.move(event); };
+	const moveType = pointerId === undefined ? 'mousemove' : 'pointermove';
+	const upType = pointerId === undefined ? 'mouseup' : 'pointerup';
+	const cancel = (event: PointerEvent) => {
+		if (!active || event.pointerId !== pointerId) return;
+		release(); callbacks.cancel();
+	};
 	const release = () => {
 		if (!active) return;
 		active = false;
 		releaseEscape();
-		window.removeEventListener('mousemove', move);
-		window.removeEventListener('mouseup', finish);
+		window.removeEventListener(moveType, move);
+		window.removeEventListener(upType, finish);
+		window.removeEventListener('pointercancel', cancel);
+		window.removeEventListener('lostpointercapture', cancel);
 	};
 	const finish = (event: MouseEvent) => {
-		if (!active || event.button !== 0) return;
+		if (!active || !owns(event) || event.button !== 0) return;
 		release();
 		callbacks.finish();
 	};
@@ -30,7 +40,11 @@ export function retainDialogMoveLifecycle(
 		release();
 		callbacks.cancel();
 	});
-	window.addEventListener('mousemove', move);
-	window.addEventListener('mouseup', finish);
+	window.addEventListener(moveType, move);
+	window.addEventListener(upType, finish);
+	if (pointerId !== undefined) {
+		window.addEventListener('pointercancel', cancel);
+		window.addEventListener('lostpointercapture', cancel);
+	}
 	return release;
 }

@@ -1,3 +1,4 @@
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CLIP_CONTENT_OFFSET } from '@soundscaper/design-system/constants';
@@ -139,7 +140,7 @@ export function TelemetryPlayhead({
 				touchAction: 'none',
 			}}
 			onPointerDownCapture={(event) => {
-				if (event.button !== 0 || event.isPrimary === false || scrubDragRef.current || !event.target.closest?.('.playhead-cursor')) return;
+				if (event.button !== 0 || !isPrimaryPointer(event) || scrubDragRef.current || !event.target.closest?.('.playhead-cursor')) return;
 				event.preventDefault();
 				event.stopPropagation();
 				const liveFrame = Math.max(0, Math.round(

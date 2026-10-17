@@ -8,8 +8,8 @@ import { ThemeProvider } from '@soundscaper/design-system/ThemeProvider';
 import { OutputTrackRow } from '../src/common/editor/ui/timeline/OutputTrackRows.jsx';
 import { installReactTestDom, reactProps, ReactTestElement } from './helpers/react-test-dom.ts';
 
-for (const scope of ['master', 'group', 'send'] as const) for (const button of [0, 1, 2]) {
-	test(`${scope} envelope commits only its primary release after auxiliary ${String(button)}`, async () => {
+for (const scope of ['master', 'group', 'send'] as const) for (const pointerType of ['mouse', 'touch', 'pen'] as const) for (const button of [0, 1, 2]) {
+	test(`${scope} ${pointerType} envelope commits only its owning release after auxiliary ${String(button)}`, async () => {
 		const dom = installReactTestDom();
 		const prior = new Map<string, PropertyDescriptor | undefined>();
 		for (const [key, value] of Object.entries({ React, IS_REACT_ACT_ENVIRONMENT: true })) {
@@ -37,9 +37,9 @@ for (const scope of ['master', 'group', 'send'] as const) for (const button of [
 		};
 		const noop = () => undefined;
 		const root = createRoot(dom.container as unknown as Element);
-		const dispatch = async (type: string, properties: Readonly<Record<string, number>>) => {
+		const dispatch = async (type: string, properties: Readonly<Record<string, number | string | boolean>>) => {
 			await act(async () => {
-				const event = { type, ...properties } as unknown as MouseEvent;
+				const event = Object.assign(new Event(type, { cancelable: true }), properties) as unknown as MouseEvent;
 				for (const listener of [...listeners.get(type) ?? []]) {
 					if (typeof listener === 'function') listener(event); else listener.handleEvent(event);
 				}
@@ -63,17 +63,31 @@ for (const scope of ['master', 'group', 'send'] as const) for (const button of [
 			Object.defineProperty(surface, 'getBoundingClientRect', { configurable: true,
 				value: () => ({ left: 0, top: 0, width: 100, height: 114 }) });
 			const y = 111 * (1 - (5 / 6) ** 3);
+			const moveType = pointerType === 'mouse' ? 'mousemove' : 'pointermove';
+			const upType = pointerType === 'mouse' ? 'mouseup' : 'pointerup';
+			const contact = { pointerId: 7, pointerType, isPrimary: pointerType !== 'pen' };
+			const down = () => {
+				const event = { ...contact, button: 0, clientX: 50, clientY: y, currentTarget: surface, preventDefault() {}, stopPropagation() {} };
+				if (pointerType === 'mouse') reactProps(surface).onMouseDown?.(event);
+				else reactProps(surface).onPointerDown?.(event);
+			};
+			document.dispatchEvent = event => {
+				for (const listener of [...listeners.get(event.type) ?? []]) {
+					if (typeof listener === 'function') listener(event); else listener.handleEvent(event);
+				}
+				return true;
+			};
 			await act(async () => {
 				reactProps(envelope).onMouseDownCapture?.({ button: 0 });
-				reactProps(surface).onMouseDown?.({ button: 0, clientX: 50, clientY: y, stopPropagation() {} });
+				down();
 			});
-			await dispatch('mousemove', { button: 0, clientX: 50, clientY: y + 12 });
+			await dispatch(moveType, { ...contact, button: 0, clientX: 50, clientY: y + 12 });
 			if (button !== 0) {
-				await dispatch('mouseup', { button, clientX: 50, clientY: y + 12 });
+				await dispatch(upType, { ...contact, button, clientX: 50, clientY: y + 12 });
 				assert.equal(publications.length, 0, 'the held primary preview must not enter history early');
 			}
-			await dispatch('mousemove', { button: 0, clientX: 50, clientY: y + 30 });
-			await dispatch('mouseup', { button: 0, clientX: 50, clientY: y + 30 });
+			await dispatch(moveType, { ...contact, button: 0, clientX: 50, clientY: y + 30 });
+			await dispatch(upType, { ...contact, button: 0, clientX: 50, clientY: y + 30 });
 			assert.equal(publications.length, 1);
 			const committed = publications[0];
 			assert.ok(committed && typeof committed === 'object' && 'envelope' in committed && Array.isArray(committed.envelope));
@@ -83,8 +97,16 @@ for (const scope of ['master', 'group', 'send'] as const) for (const button of [
 				assert.ok(point && typeof point === 'object' && 'value' in point && typeof point.value === 'number');
 				assert.ok(Math.abs(point.value - expectedGain) < 1e-8);
 			}
-			await dispatch('mouseup', { button: 0, clientX: 50, clientY: y + 30 });
+			await dispatch(upType, { ...contact, button: 0, clientX: 50, clientY: y + 30 });
 			assert.equal(publications.length, 1);
+			if (pointerType !== 'mouse') {
+				await act(async () => { down(); });
+				await dispatch(moveType, { ...contact, button: 0, clientX: 50, clientY: y + 15 });
+				await dispatch('pointercancel', { ...contact, button: 0 });
+				await dispatch(upType, { ...contact, button: 0 });
+				await dispatch('mouseup', { button: 0 });
+				assert.equal(publications.length, 1, 'cancellation and later releases cannot publish a draft');
+			}
 		} finally {
 			await act(async () => { root.unmount(); });
 			if (canvas) Object.defineProperty(ReactTestElement.prototype, 'getContext', canvas);

@@ -1,17 +1,19 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/** Retain mouse completion without intercepting the browser's native range thumb. */
+/** Retain mouse or pen completion without intercepting the native range thumb. */
 export function retainNativeRangeMouseCustody(
 	document: Document,
 	pointerId: number,
 	callbacks: Readonly<{
+		pointerType?: 'mouse' | 'pen';
 		finish(): void;
 		cancel(): void;
 		releasesPrimaryMove?(event: PointerEvent): boolean;
 	}>,
 ): () => void {
 	let active = true;
-	const owns = (event: PointerEvent): boolean => active && event.pointerId === pointerId && event.pointerType === 'mouse';
+	const owns = (event: PointerEvent): boolean => active && event.pointerId === pointerId
+		&& event.pointerType === (callbacks.pointerType ?? 'mouse');
 	const dispose = (): void => {
 		if (!active) return;
 		active = false;

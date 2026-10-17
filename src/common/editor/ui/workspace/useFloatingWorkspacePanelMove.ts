@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 
@@ -33,7 +34,7 @@ export function useFloatingWorkspacePanelMove(input: Readonly<{
 	}, [dock]);
 
 	return (event: ReactPointerEvent<HTMLElement>, panelId: string): void => {
-		if (dock !== 'floating' || event.button !== 0 || event.isPrimary === false
+		if (dock !== 'floating' || event.button !== 0 || !isPrimaryPointer(event)
 			|| input.resizeSessionRef.current || sessionRef.current) return;
 		const target = event.target instanceof Element ? event.target : null;
 		const meterGrip = Boolean(target?.closest('[data-meter-panel-grip]'));

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
+import { isPrimaryPointer } from '../utils/pointerInput';
 
 export const ENVELOPE_POINTER_COMMIT = 'scape:envelope-pointer-commit';
 export const ENVELOPE_POINTER_CANCEL = 'scape:envelope-pointer-cancel';
@@ -11,7 +12,7 @@ export function beginEnvelopePointerDrag(
 ) {
 	if (event.pointerType === 'mouse' || event.button !== 0) return;
 	// Some Android pens report isPrimary=false even for their only contact.
-	if (hasDrag() || (event.pointerType === 'touch' && event.isPrimary === false)) { event.preventDefault(); event.stopPropagation(); return; }
+	if (hasDrag() || !isPrimaryPointer(event)) { event.preventDefault(); event.stopPropagation(); return; }
 	owner.current = null;
 	begin();
 	if (!hasDrag()) return;

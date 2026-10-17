@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CLIP_CONTENT_OFFSET } from '@soundscaper/design-system/constants';
 import { EnvelopeCurve } from '@soundscaper/design-system/EnvelopeCurve';
 import { EnvelopeInteractionLayer } from '@soundscaper/design-system/EnvelopeInteractionLayer';
+import { ENVELOPE_POINTER_COMMIT, ENVELOPE_POINTER_CANCEL } from '@soundscaper/design-system/EnvelopeInteractionLayer/envelope-pointer-input';
 import { TrackControlPanel } from '@soundscaper/design-system/TrackControlPanel';
 import { OutputTrackNameEditor } from './OutputTrackNameEditor.tsx';
 
@@ -213,7 +214,6 @@ export function OutputTrackRow({
 	const previewRef = useRef(null);
 	const rowRef = useRef(null);
 	const [previewPoints, setPreviewPoints] = useState(null);
-	const [envelopeEditActive, setEnvelopeEditActive] = useState(false);
 	const displayedPoints = previewPoints || canonicalPoints;
 	const curvePoints = displayedPoints;
 	const update = useCallback((changes) => {
@@ -222,12 +222,19 @@ export function OutputTrackRow({
 	}, [bus.id, controller, scope]);
 
 	useEffect(() => {
-		if (!stripEnvelopeAvailable || !envelopeEditActive) return undefined;
+		if (!stripEnvelopeAvailable) return undefined;
+		const tasks = new Set();
+		const cancel = () => {
+			for (const task of tasks) globalThis.clearTimeout(task);
+			tasks.clear(); previewRef.current = null;
+			setPreviewPoints(null);
+		};
+		const escape = event => { if (event.key === 'Escape' && previewRef.current) cancel(); };
 		const finishEnvelopeEdit = (event) => {
-			if (event.button !== 0) return;
-			globalThis.setTimeout(() => {
+			if ('button' in event && event.button !== 0) return;
+			const task = globalThis.setTimeout(() => {
+				tasks.delete(task);
 				const points = previewRef.current;
-				setEnvelopeEditActive(false);
 				if (!points) return;
 				previewRef.current = null;
 				setPreviewPoints(null);
@@ -245,16 +252,25 @@ export function OutputTrackRow({
 					),
 				}));
 			}, 0);
+			tasks.add(task);
 		};
 		document.addEventListener('mouseup', finishEnvelopeEdit);
-		return () => document.removeEventListener('mouseup', finishEnvelopeEdit);
-	}, [bus.envelope, canonicalDurationFrames, envelopeEditActive, envelopeEndFrame, envelopeStartFrame, run, sampleRate, stripEnvelopeAvailable, update]);
+		document.addEventListener(ENVELOPE_POINTER_COMMIT, finishEnvelopeEdit);
+		document.addEventListener(ENVELOPE_POINTER_CANCEL, cancel);
+		document.addEventListener('keydown', escape);
+		return () => {
+			for (const task of tasks) globalThis.clearTimeout(task);
+			document.removeEventListener('mouseup', finishEnvelopeEdit);
+			document.removeEventListener(ENVELOPE_POINTER_COMMIT, finishEnvelopeEdit);
+			document.removeEventListener(ENVELOPE_POINTER_CANCEL, cancel);
+			document.removeEventListener('keydown', escape);
+		};
+	}, [bus.envelope, canonicalDurationFrames, envelopeEndFrame, envelopeStartFrame, run, sampleRate, stripEnvelopeAvailable, update]);
 
 	useEffect(() => {
 		if (automationToolEnabled) return;
 		previewRef.current = null;
 		setPreviewPoints(null);
-		setEnvelopeEditActive(false);
 	}, [automationToolEnabled]);
 	useEffect(() => {
 		if (previewRef.current === null) setPreviewPoints(null);
@@ -356,9 +372,6 @@ export function OutputTrackRow({
 					{stripEnvelopeAvailable && <div
 						className="audio-editor-output-envelope"
 						style={{ left: timelineContentLeft(envelopeLeft), width: envelopeWidth }}
-						onMouseDownCapture={(event) => {
-							if (event.button === 0 && automationToolEnabled && !blocked) setEnvelopeEditActive(true);
-						}}
 					>
 						<EnvelopeCurve
 							points={curvePoints}
@@ -379,7 +392,6 @@ export function OutputTrackRow({
 								if (blocked || !automationToolEnabled) return;
 								previewRef.current = points;
 								setPreviewPoints(points);
-								setEnvelopeEditActive(true);
 							}}
 							enabled={automationToolEnabled && !blocked}
 							width={envelopeWidth}

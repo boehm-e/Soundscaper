@@ -1,3 +1,4 @@
+import { isPrimaryPointer } from '../utils/pointerInput';
 import React, { useRef, useCallback, useState } from 'react';
 import { useTheme } from '../ThemeProvider';
 import { MixerFaderHandle } from '../MixerFaderHandle';
@@ -121,7 +122,7 @@ export const MixerFader: React.FC<MixerFaderProps> = ({
   }, [min, max, clampedValue]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (disabled || e.button !== 0 || e.isPrimary === false || draggingRef.current) {
+    if (disabled || e.button !== 0 || !isPrimaryPointer(e) || draggingRef.current) {
       e.preventDefault();
       return;
     }

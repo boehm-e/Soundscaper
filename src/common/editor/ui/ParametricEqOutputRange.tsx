@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import { useEffect, useRef, type PointerEvent } from 'react';
 import { retainNativeRangeMouseCustody } from '../controller/effects/native-range-mouse-custody.ts';
@@ -42,11 +43,12 @@ export function ParametricEqOutputRange({ disabled, value, minimum, maximum, onB
 	return <input ref={input} disabled={disabled} type="range" min={minimum} max={maximum} step="0.1" value={value}
 		onPointerDown={event => {
 			if (disabled || event.button !== 0) return;
-			if (event.isPrimary === false || owner.current !== null) { event.preventDefault(); return; }
+			if (!isPrimaryPointer(event) || owner.current !== null) { event.preventDefault(); return; }
 			owner.current = event.pointerId;
 			onBegin();
-			if (event.pointerType === 'mouse') {
+			if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
 				mouseCustody.current = retainNativeRangeMouseCustody(event.currentTarget.ownerDocument, event.pointerId, {
+					pointerType: event.pointerType,
 					finish: () => finishMouse(false), cancel: () => finishMouse(true),
 				});
 			} else event.currentTarget.setPointerCapture?.(event.pointerId);

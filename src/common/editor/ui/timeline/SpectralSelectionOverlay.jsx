@@ -1,3 +1,4 @@
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 import { useEffect, useRef, useState } from 'react';
 import { CLIP_CONTENT_OFFSET } from '@soundscaper/design-system/constants';
 
@@ -70,7 +71,7 @@ export function SpectralSelectionOverlay({
 		event.stopPropagation();
 	};
 	const beginDrag = (kind, event) => {
-		if (disabled || event.button !== 0 || event.isPrimary === false || dragRef.current) return;
+		if (disabled || event.button !== 0 || !isPrimaryPointer(event) || dragRef.current) return;
 		stopClick(event);
 		dragRef.current = {
 			kind,

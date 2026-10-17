@@ -1,3 +1,4 @@
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 import { PARAMETRIC_EQ_BAND_COPY } from '../../i18n/editor-parametric-eq-copy.ts';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@soundscaper/design-system/Button';
@@ -141,7 +142,7 @@ export function ParametricEqEditor({
 		onCommit?.(value);
 	};
 	const beginDrag = (event, band) => {
-		if (disabled || event.button !== 0 || event.isPrimary === false || dragRef.current) return;
+		if (disabled || event.button !== 0 || !isPrimaryPointer(event) || dragRef.current) return;
 		event.preventDefault();
 		event.stopPropagation();
 		setSelectedId(band.id);

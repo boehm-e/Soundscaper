@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -182,7 +183,7 @@ export function TrackAutomationOverlay({
 		span: Readonly<{ startFrame: number; endFrame: number }>,
 		pointId?: string,
 	) => {
-		if (!interactive || event.button !== 0 || event.isPrimary === false || dragRef.current) return;
+		if (!interactive || event.button !== 0 || !isPrimaryPointer(event) || dragRef.current) return;
 		event.preventDefault();
 		event.stopPropagation();
 		const frame = frameAtPointer(event.clientX, span.startFrame, span.endFrame);
@@ -345,7 +346,7 @@ export function TrackAutomationOverlay({
 		event: React.PointerEvent<SVGCircleElement>,
 		handle: ProjectedTrackAutomationBezierHandle,
 	) => {
-		if (!interactive || !lane || event.button !== 0 || event.isPrimary === false || dragRef.current) return;
+		if (!interactive || !lane || event.button !== 0 || !isPrimaryPointer(event) || dragRef.current) return;
 		event.preventDefault();
 		event.stopPropagation();
 		setCurveMenu(null);
@@ -431,7 +432,7 @@ export function TrackAutomationOverlay({
 				aria-valuemax={target.descriptor.maximum}
 				aria-valuenow={point.value}
 				tabIndex={interactive ? 0 : -1}
-				onPointerDown={(event) => event.button === 0 && event.isPrimary !== false && !dragRef.current && attempt(() => event.altKey
+				onPointerDown={(event) => event.button === 0 && isPrimaryPointer(event) && !dragRef.current && attempt(() => event.altKey
 					? (event.preventDefault(), event.stopPropagation(), removePoint(point.id))
 					: beginPointDrag(event, { startFrame: point.frame, endFrame: point.frame }, point.id))}
 				onKeyDown={(event) => attempt(() => editPointFromKeyboard(event, point.id))}

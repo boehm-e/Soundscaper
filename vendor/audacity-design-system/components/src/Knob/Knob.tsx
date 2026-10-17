@@ -1,3 +1,4 @@
+import { isPrimaryPointer } from '../utils/pointerInput';
 import React, { useRef, useState } from 'react';
 import { useTheme } from '../ThemeProvider';
 import './Knob.css';
@@ -213,7 +214,7 @@ export const Knob: React.FC<KnobProps> = ({
   }, [releaseCapturedPointer]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (disabled || !onChange || e.button !== 0 || e.isPrimary === false
+    if (disabled || !onChange || e.button !== 0 || !isPrimaryPointer(e)
       || dragGestureRef.current) return;
     e.preventDefault();
     e.stopPropagation();

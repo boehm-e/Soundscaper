@@ -1,4 +1,5 @@
 import React, { useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { isPrimaryPointer } from '@soundscaper/design-system/utils/pointerInput';
 import { retainResizableSurfaceMouseLifecycle } from './resizable-surface-mouse-lifecycle.ts';
 
 const RESIZE_STEP = 16;
@@ -77,8 +78,24 @@ const AudioEditorResizableSurface = React.forwardRef(function AudioEditorResizab
 		};
 		return retainResizableSurfaceMouseLifecycle(surfaceRef.current.ownerDocument, {
 			move: handleMouseMove, finish: handleMouseUp, cancel: cancelResize,
-		});
+		}, dragRef.current?.pointerId);
 	}, [isResizing, minHeight, minWidth]);
+
+	const beginResize = event => {
+		if (event.button !== 0 || !surfaceRef.current || dragRef.current) return;
+		event.preventDefault();
+		const rect = surfaceRef.current.getBoundingClientRect();
+		const pointerId = event.pointerType && event.pointerType !== 'mouse' ? event.pointerId : undefined;
+		dragRef.current = {
+			x: event.clientX, y: event.clientY, width: rect.width, height: rect.height,
+			initialStyle: { width: surfaceRef.current.style.width, height: surfaceRef.current.style.height },
+			maxWidth: Math.max(minWidth, window.innerWidth - rect.left - 8),
+			maxHeight: Math.max(minHeight, window.innerHeight - rect.top - 8),
+			frame: 0, size: null, pointerId,
+		};
+		if (pointerId !== undefined) event.currentTarget.setPointerCapture(pointerId);
+		setIsResizing(true);
+	};
 
 	const renderedSize = dragRef.current?.size || size;
 	return (
@@ -98,23 +115,9 @@ const AudioEditorResizableSurface = React.forwardRef(function AudioEditorResizab
 				role="button"
 				tabIndex={0}
 				aria-label={resizeLabel}
-				onMouseDown={(event) => {
-					if (event.button !== 0 || !surfaceRef.current) return;
-					event.preventDefault();
-					const rect = surfaceRef.current.getBoundingClientRect();
-					dragRef.current = {
-						x: event.clientX,
-						y: event.clientY,
-						width: rect.width,
-						height: rect.height,
-						initialStyle: { width: surfaceRef.current.style.width, height: surfaceRef.current.style.height },
-						maxWidth: Math.max(minWidth, window.innerWidth - rect.left - 8),
-						maxHeight: Math.max(minHeight, window.innerHeight - rect.top - 8),
-						frame: 0,
-						size: null,
-					};
-					setIsResizing(true);
-				}}
+				style={{ touchAction: 'none' }}
+				onMouseDown={beginResize}
+				onPointerDown={event => { if (event.pointerType !== 'mouse' && isPrimaryPointer(event)) beginResize(event); }}
 				onKeyDown={(event) => {
 					if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
 					const rect = surfaceRef.current?.getBoundingClientRect();

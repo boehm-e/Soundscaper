@@ -1,3 +1,4 @@
+import { resolveMusicalCutsCopy } from '../../i18n/editor-musical-cuts-copy.ts';
 import { createApplicationSelectMenu } from './application-select-menu.js';
 import { applyAudacityParityToMenus } from '../audacity-action-parity.js';
 import { createCommunityTranslationMenuItems } from './community-translations/community-translation-menu.ts';
@@ -462,6 +463,7 @@ export default function createApplicationMenus({
 					checked: snapshot.preferences?.workspace?.panels?.analysis?.visible === true,
 					visibilityToggle: true, onClick: () => viewMenu.togglePanel('analysis') },
 				{ id: 'analyze-selection', label: copy.analyzeSelection, disabled: selectionAnalyzerBlocked, onClick: () => actions.openAnalysis('levels') },
+				{ id: 'musical-cuts', label: resolveMusicalCutsCopy(copy).title, disabled: analyzerBlocked || snapshot.analysisProcessing, onClick: () => actions.openAnalysis('musical-cuts') },
 				{ id: 'plot-spectrum', label: copy.plotSpectrum, disabled: selectionAnalyzerBlocked, onClick: () => actions.openAnalysis('spectrum') },
 				{ id: 'find-clipping', label: copy.findClipping, disabled: selectionAnalyzerBlocked, onClick: () => actions.openAnalysis('clipping') },
 				{ id: 'contrast', label: copy.contrast, disabled: selectionAnalyzerBlocked, onClick: () => actions.openAnalysis('contrast') },

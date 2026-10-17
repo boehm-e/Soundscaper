@@ -234,6 +234,7 @@ const REFERENCE_SEEDS: readonly ReferenceSeed[] = Object.freeze([
 	// Live analysis panel and selected-range analysis commands.
 	['analysis', 'Analysis', 'Analyze', SOUNDSCAPER, 'setting'],
 	['analyze-selection', 'Analyze selection', 'Analyze', SOUNDSCAPER],
+	['musical-cuts', 'Find musical cuts', 'Analyze', SOUNDSCAPER],
 	['measure-loudness', 'Measure loudness', 'Analyze', SOUNDSCAPER],
 	['native-analyzer-use', 'Vamp Plugins', 'Analyze', SOUNDSCAPER],
 	['framescaper-motion-tracking', 'Motion Tracking', 'Analyze', FRAMESCAPER],

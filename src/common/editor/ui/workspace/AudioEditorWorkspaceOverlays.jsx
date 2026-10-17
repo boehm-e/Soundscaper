@@ -41,6 +41,7 @@ const LabelExportDialog = lazyEditorModule(() => import('../inspector/LabelExpor
 const SelectionEffectsDialog = lazyEditorModule(() => import('../inspector/SelectionEffectsDialog.jsx'));
 const MixRenderDialog = lazyEditorModule(() => import('../dialogs/MixRenderDialog.tsx'));
 const AnalysisDialog = lazyEditorModule(() => import('../dialogs/AnalysisDialog.jsx'));
+const MusicalCutsDialog = lazyEditorModule(() => import('../dialogs/MusicalCutsDialog.jsx'));
 const EditorDialog = lazyEditorModule(() => import('../dialogs/EditorDialog.jsx'));
 const GeneratorDialog = lazyEditorModule(() => import('../dialogs/GeneratorDialog.jsx'));
 const NyquistDialog = lazyEditorModule(() => import('../dialogs/NyquistDialog.jsx'));
@@ -487,7 +488,9 @@ export default function AudioEditorWorkspaceOverlays({ model }) {
 				</div>
 			)}
 			{activeSurface?.startsWith('offline-analysis-') && <div data-editor-surface={activeSurface}>
-				<AnalysisDialog mode={activeSurface.slice('offline-analysis-'.length)} controller={controller} snapshot={snapshot} copy={copy} fileService={fileService} onClose={() => setActiveSurface(null)} />
+				{activeSurface === 'offline-analysis-musical-cuts'
+					? <MusicalCutsDialog controller={controller} snapshot={snapshot} copy={copy} onClose={() => setActiveSurface(null)} />
+					: <AnalysisDialog mode={activeSurface.slice('offline-analysis-'.length)} controller={controller} snapshot={snapshot} copy={copy} fileService={fileService} onClose={() => setActiveSurface(null)} />}
 			</div>}
 			<LocalProcessingOverlays activeSurface={activeSurface} fileService={fileService}
 				capabilities={capabilities} snapshot={snapshot} copy={copy} locale={locale}

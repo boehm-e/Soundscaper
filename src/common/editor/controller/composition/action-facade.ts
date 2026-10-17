@@ -454,6 +454,7 @@ export function createGroupedEditorActions(scope: EditorActionRuntime) {
 		}),
 		macros,
 		analysis: Object.freeze({
+			createMusicalCutsSession: restricted('audioAnalysis', analysisService.createMusicalCutsSession),
 			run: restricted('audioAnalysis', analysisService.run),
 			plotSpectrum: restricted('audioAnalysis', analysisService.plotSpectrum),
 			findClipping: restricted('audioAnalysis', analysisService.findClipping),

@@ -304,7 +304,7 @@ export function createAudioEditorController(_root = null, options = {}) {
 		bindProjectAdministrationActions(projectAdminService, () => documentState.project, () => framescaperCapture);
 	const analysisService = createAnalysisComposition({
 		enabled: composition.analysis, productName: product.name, state, copy, lifetime, projectGeneration, store, taskProgress,
-		getProject: () => documentState.project, getActiveSelection: activeSelection, projectDurationFrames, getImmutableProjectGeneration: getCommandProject,
+		getProject: () => documentState.project, getActiveSelection: activeSelection, projectDurationFrames, getImmutableProjectGeneration: getCommandProject, stageCommand: (project, command) => projectRuntime.applyCommand(project, command, { microfadeNewClips: state.preferences.editing.applyMicrofadesToNewClips }),
 		cloneProject: projectRuntime.cloneProject, projectSampleRate: () => projectSampleRate(), sourceBuffers, hasMissingTimelineSources: bindings.hasMissingTimelineSources, analyzeChannels: analyzeChannelsInWorker,
 		renderSnapshot: (...args) => renderSnapshot(...args), showAnalysis: bindings.showAnalysis, setStatus: bindings.setStatus, publish: publishDocumentSnapshot, batchPresentation: documentChannel.batch, handleError: bindings.handleError,
 	});

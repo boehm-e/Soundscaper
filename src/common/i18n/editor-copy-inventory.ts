@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+import { MUSICAL_CUTS_COPY_BY_LOCALE } from './editor-musical-cuts-copy.ts';
 import { ENGLISH_COPY, GERMAN_COPY } from './catalogs.js';
 import { ARA_COPY_BY_LOCALE } from './editor-ara-copy.ts';
 import { acceptableTranslation } from './translation-catalog.js';
@@ -120,6 +121,7 @@ const { pressure: pressureGerman, preflightStatus: preflightGerman, operation: o
 	...storageGerman } = STORAGE_CAPACITY_COPY_BY_LOCALE.de;
 const inventory = buildEditorCopyInventory(ENGLISH_COPY, GERMAN_COPY, [
 	{ owner: 'ara', ...ARA_COPY_BY_LOCALE },
+	{ owner: 'musicalCuts', ...MUSICAL_CUTS_COPY_BY_LOCALE },
 	{ owner: 'originalFileOverwrite', ...ORIGINAL_FILE_OVERWRITE_COPY_BY_LOCALE },
 	{ owner: 'blender', ...BLENDER_COPY_BY_LOCALE },
 	{ owner: 'about', ...ABOUT_DIALOG_COPY_BY_LOCALE },

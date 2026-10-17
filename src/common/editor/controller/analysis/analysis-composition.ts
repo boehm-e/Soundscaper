@@ -9,6 +9,8 @@ import type { EditorProjectGeneration } from '../shared/lifecycle.ts';
 import type { EditorTaskProgressCoordinator } from '../shared/task-progress.ts';
 import { resolveSelectionRange } from '../../selection-range.ts';
 import { calculateAudioAnalysisReportInWorker } from '../../audio-analysis-report-worker-client.ts';
+import type { MusicalCutsSession } from './musical-cuts-session.ts';
+import type { AudioEditorCommand } from '../../commands/protocol.ts';
 
 interface AnalysisWorkerCopy {
 	readonly audioAnalysisWorkerFailed: string;
@@ -33,11 +35,15 @@ export type AnalysisCompositionState = AnalysisState & {
 	preferences?: { readonly spectrogram?: { readonly windowSize?: number } };
 };
 
-export type AnalysisActions = ReturnType<typeof createDeferredAudioAnalysisService>;
+type DeferredAnalysisActions = ReturnType<typeof createDeferredAudioAnalysisService>;
+export type AnalysisActions = DeferredAnalysisActions & {
+	createMusicalCutsSession(): Promise<MusicalCutsSession>;
+};
 
 export interface AnalysisCompositionDependencies<Project extends AnalysisProject, Buffers>
 	extends Omit<AnalysisRenderDependencies<Project, Buffers>, 'getProject' | 'getSelectedTrackId' | 'copy'> {
 	readonly enabled: boolean;
+	readonly stageCommand?: (project: Project, command: AudioEditorCommand) => Project;
 	readonly productName: string;
 	readonly state: AnalysisCompositionState;
 	readonly copy: AnalysisDependencies['copy'] & AnalysisRenderDependencies<Project, Buffers>['copy']
@@ -73,7 +79,7 @@ export function createAnalysisComposition<Project extends AnalysisProject, Buffe
 	};
 	const currentSelection = () => dependencies.getActiveSelection()
 		?? resolveSelectionRange(requireProject(), { selectedClipId: state.selectedClipId ?? null });
-	const service: AnalysisActions = dependencies.enabled ? createDeferredAudioAnalysisService({
+	const service: DeferredAnalysisActions = dependencies.enabled ? createDeferredAudioAnalysisService({
 		lifetime: dependencies.lifetime, copy, state,
 		captureProject: () => dependencies.projectGeneration.capture(dependencies.getProject()?.id ?? null),
 		assertProject: (token) => dependencies.projectGeneration.assertCurrent(token),
@@ -120,6 +126,26 @@ export function createAnalysisComposition<Project extends AnalysisProject, Buffe
 	}) : createAbsentAnalysisService({ productName: dependencies.productName });
 	return Object.freeze({
 		...service,
+		createMusicalCutsSession: async () => {
+			if (!dependencies.enabled) throw new Error('Audio analysis is unavailable.');
+			const [{ createMusicalCutsSession }, { analyzeMusicalCutsInWorker }] = await Promise.all([
+				import('./musical-cuts-session.ts'), import('../../musical-cut-worker-client.ts'),
+			]);
+			return createMusicalCutsSession({ getProject: requireProject, sampleRate: dependencies.projectSampleRate,
+				stageCommand: (project, command) => {
+					if (!dependencies.stageCommand) throw new Error('Musical cut preview requires the product command runtime.');
+					return dependencies.stageCommand(project, command);
+				},
+				lifetime: dependencies.lifetime,
+				captureProject: () => dependencies.projectGeneration.capture(requireProject().id),
+				assertProject: token => dependencies.projectGeneration.assertCurrent(token),
+				analyze: analyzeMusicalCutsInWorker,
+				render: (project, range, signal, trackId) => createAnalysisRenderer({
+					...dependencies, getProject: () => project, getSelectedTrackId: () => trackId,
+				})('track', range, signal, trackId),
+				busy: value => { state.analysisProcessing = value; dependencies.publish(); },
+			});
+		},
 		run: (...args) => dependencies.taskProgress.run('analysis', copy.analysisRendering, () => service.run(...args), undefined, { key: "analysisRendering" }),
 		plotSpectrum: (...args) => dependencies.taskProgress.run('analysis', copy.analysisRendering, () => service.plotSpectrum(...args), undefined, { key: "analysisRendering" }),
 		findClipping: (...args) => dependencies.taskProgress.run('analysis', copy.analysisRendering, () => service.findClipping(...args), undefined, { key: "analysisRendering" }),

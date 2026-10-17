@@ -12,6 +12,9 @@ const notices = readFileSync(resolve(root, 'THIRD_PARTY_LICENSES.md'), 'utf8');
 const declared = { ...packageJson.dependencies, ...packageJson.devDependencies };
 
 const trackedVersions = [
+	'@capacitor/android',
+	'@capacitor/core',
+	'@capacitor/cli',
 	'@axe-core/playwright',
 	'@echogarden/pffft-wasm',
 	'@electron/fuses',

@@ -36,7 +36,7 @@ installStaleBuildDetection({ moduleUrl: import.meta.url });
 const route = await resolveApplicationRoute(window);
 applyDocumentRoute(route);
 createRoot(applicationRoot).render(<App route={route} />);
-if (import.meta.env.PROD) {
+if (import.meta.env.PROD && !window.soundscaperAndroid) {
 	void scheduleOfflineApplicationShellRegistration({
 		desktop: route.desktop,
 		productId: route.productId,

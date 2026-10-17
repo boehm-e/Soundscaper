@@ -1,5 +1,19 @@
 # Third-party browser runtime notices
 
+## Android shell in this fork
+
+- `@capacitor/android` 8.5.3 and `@capacitor/core` 8.5.3: MIT, copyright
+  2017-present Drifty Co. The complete notice is preserved in
+  [`LICENSES/Capacitor-MIT.txt`](LICENSES/Capacitor-MIT.txt).
+- `@capacitor/cli` 8.5.3: MIT; build tooling, not application code.
+- AndroidX libraries and Apache Cordova Android 14.0.1: Apache-2.0. Native
+  dependency versions are declared in `android/variables.gradle`; Capacitor's
+  transitive Android dependencies are resolved by Gradle.
+
+The Android package includes this document, the AGPL license, and the repository
+license-notice directory. It does not include the professional desktop payload
+described below.
+
 ## Soundscaper professional-native desktop payload
 
 Stable Soundscaper desktop packages carry a closed, target-specific notice

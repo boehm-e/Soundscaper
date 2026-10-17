@@ -1,4 +1,5 @@
 node_modules
+.android-build/
 .claude/worktrees/
 dist/
 # Hidden source maps from a SCAPE_BUILD_SOURCE_MAPS=1 build; a coverage input,

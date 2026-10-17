@@ -1,0 +1,14 @@
+{
+	"appId": "io.github.boehme.soundscaper",
+	"appName": "Soundscaper",
+	"webDir": ".android-build/web",
+	"loggingBehavior": "debug",
+	"server": {
+		"hostname": "localhost",
+		"androidScheme": "https"
+	},
+	"android": {
+		"minWebViewVersion": 120,
+		"allowMixedContent": false
+	}
+}

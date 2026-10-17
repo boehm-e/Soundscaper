@@ -1,5 +1,9 @@
 # Soundscaper
 
+This fork adds an experimental Android application and APK build pipeline.
+See [Android build and testing](docs/android.md) for local builds, CI artifacts,
+release signing, and current platform limits.
+
 [Soundscaper](https://soundscaper.org) is a re-implementation of Audacity 4 on the web. It aims to be fully compatible to Audacity 4, keeping layout, design and features closely aligned, while also introducing a range of new features, such as basic video editing capabilities. 
 
 The repository now builds two focused products from the same local-first mixed-media editor and canonical project schema. Soundscaper provides the complete audio/DAW surface at `/<locale>/`; Framescaper provides video effects and compositing at `/framescaper/<locale>/`. On the web, both routes deliberately share the same origin, IndexedDB/OPFS library, and project locks. Either product can preserve, render, and hand a project to the other without copying its media.

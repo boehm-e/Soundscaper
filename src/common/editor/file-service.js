@@ -227,6 +227,7 @@ export function createAudioEditorFileService(options = {}) {
 				...(request.mimeType ? { mimeType: String(request.mimeType) } : {}),
 			});
 		}
+		if (scope.soundscaperAndroid?.chooseSaveTarget) return scope.soundscaperAndroid.chooseSaveTarget(request);
 		if (request.useFileSystemAccess && typeof scope.showSaveFilePicker === 'function') {
 			return scope.showSaveFilePicker({
 				suggestedName,
@@ -292,7 +293,7 @@ export function createAudioEditorFileService(options = {}) {
 	async function createDownload(request = {}) {
 		const blob = toBlob(request.blob ?? request.bytes ?? request.text ?? '', request.mimeType);
 		const fileName = sanitizeSuggestedName(request.suggestedName || request.fileName);
-		if (bridge) return saveFile({ ...request, blob, suggestedName: fileName });
+		if (bridge || scope.soundscaperAndroid) return saveFile({ ...request, blob, suggestedName: fileName });
 		if (!urlApi?.createObjectURL) return { method: 'blob', blob, fileName, size: blob.size, url: null, cleanup: async () => {} };
 		const url = urlApi.createObjectURL(blob);
 		let revoked = false;

@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 const CHUNK_BYTES = 192 * 1024;
 
+export function createAndroidWindowAccess(plugin) {
+	return Object.freeze({ setFullscreen: enabled => plugin.setFullscreen({ enabled }) });
+}
+
 /** File System Access shaped adapter backed by Android's document picker. */
 export function createAndroidFileAccess(plugin) {
 	return Object.freeze({
@@ -62,7 +66,9 @@ function createWriter(plugin, targetId) {
 }
 
 if (globalThis.Capacitor?.getPlatform?.() === 'android') {
-	globalThis.soundscaperAndroid = createAndroidFileAccess(
-		globalThis.Capacitor.Plugins.SoundscaperFiles,
-	);
+	const plugins = globalThis.Capacitor.Plugins;
+	globalThis.soundscaperAndroid = Object.freeze({
+		...createAndroidFileAccess(plugins.SoundscaperFiles),
+		...(plugins.SoundscaperWindow ? createAndroidWindowAccess(plugins.SoundscaperWindow) : {}),
+	});
 }

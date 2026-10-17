@@ -72,7 +72,7 @@ const DEFERRED_WEB_VCR_PANEL_ID = 'web-vcr'; export default function AudioEditor
 	const [macroDraft, setMacroDraft] = useState(null);
 	const [dialog, setDialog] = useState(null);
 	const [dialogValue, setDialogValue] = useState('');
-	const [isFullscreen, setIsFullscreen] = useState(false);
+	const [isFullscreen, setIsFullscreen] = useState(() => 'soundscaperAndroid' in globalThis);
 	const [showArmControls, setShowArmControls] = useState(false);
 	const [generatorType, setGeneratorType] = useState('tone');
 	const [nyquistTarget, setNyquistTarget] = useState(() => ({ prompt: true, pluginId: null }));
@@ -141,6 +141,9 @@ const DEFERRED_WEB_VCR_PANEL_ID = 'web-vcr'; export default function AudioEditor
 		setPlaybackMeterSettings,
 		setRecordingMeterSettings,
 	});
+	useEffect(() => {
+		if (globalThis.soundscaperAndroid?.setFullscreen) run(() => globalThis.soundscaperAndroid.setFullscreen(isFullscreen));
+	}, [isFullscreen, run]);
 	const showVideoPreview = useCallback(() => {
 		run(() => controller.actions.preferences.setPanelVisibility('video-preview', true));
 	}, [controller, run]);

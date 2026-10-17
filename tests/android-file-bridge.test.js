@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createAndroidFileAccess } from '../android/web/file-bridge.mjs';
+import { createAndroidFileAccess, createAndroidWindowAccess } from '../android/web/file-bridge.mjs';
 import { createAudioEditorFileService } from '../src/common/editor/file-service.js';
 
 function harness() {
@@ -27,6 +27,14 @@ function harness() {
 		get aborted() { return aborted; },
 	};
 }
+
+test('Android fullscreen forwards both enter and exit to the native window', async () => {
+	const calls = [];
+	const window = createAndroidWindowAccess({ async setFullscreen(request) { calls.push(request); } });
+	await window.setFullscreen(true);
+	await window.setFullscreen(false);
+	assert.deepEqual(calls, [{ enabled: true }, { enabled: false }]);
+});
 
 test('Android save streams bounded chunks and patches the WAV header in place', async () => {
 	const native = harness();

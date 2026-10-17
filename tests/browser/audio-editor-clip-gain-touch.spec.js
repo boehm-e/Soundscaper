@@ -42,21 +42,28 @@ async function setup(page) {
 	return { editor, clip, native: await page.context().newCDPSession(page), start };
 }
 
-for (const kind of ['touch', 'pen']) test(`${kind} creates and drags clip gain vertically, with undo and redo`, async ({ page, browserName }) => {
+for (const kind of ['touch', 'pen', 'non-primary pen']) test(`${kind} creates and drags clip gain vertically, with undo and redo`, async ({ page, browserName }) => {
 	test.skip(browserName !== 'chromium');
+	if (kind === 'non-primary pen') await page.addInitScript(() => {
+		// Observed on the physical Xiaomi pen: contact events remain non-primary.
+		const primary = Object.getOwnPropertyDescriptor(PointerEvent.prototype, 'isPrimary');
+		Object.defineProperty(PointerEvent.prototype, 'isPrimary', { configurable: true,
+			get() { return this.pointerType === 'pen' ? false : primary.get.call(this); } });
+	});
+	const pointerKind = kind === 'touch' ? 'touch' : 'pen';
 	const errors = [];
 	page.on('pageerror', error => errors.push(String(error)));
 	const { editor, clip, native, start } = await setup(page);
-	await stroke(native, start, start, kind);
+	await stroke(native, start, start, pointerKind);
 	const point = clip.locator('.envelope-point').first();
 	await expect(clip.locator('.envelope-point')).toHaveCount(1);
 	const original = await center(point);
 	const timeline = editor.locator('[data-timeline]');
 	const initialView = await timeline.evaluate(element => ({ width: element.scrollWidth, left: element.scrollLeft }));
-	await stroke(native, original, { ...original, y: original.y + 32 }, kind);
+	await stroke(native, original, { ...original, y: original.y + 32 }, pointerKind);
 	await expect.poll(async () => (await center(point)).y).toBeGreaterThan(original.y + 20);
 	const reduced = await center(point);
-	await stroke(native, reduced, { ...reduced, y: reduced.y - 20 }, kind);
+	await stroke(native, reduced, { ...reduced, y: reduced.y - 20 }, pointerKind);
 	await expect.poll(async () => (await center(point)).y).toBeLessThan(reduced.y - 12);
 	const raised = await center(point);
 	await chooseCommandAction(page, editor, 'Edit', 'Undo');

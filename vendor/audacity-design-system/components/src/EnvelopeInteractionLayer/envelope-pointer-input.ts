@@ -10,7 +10,8 @@ export function beginEnvelopePointerDrag(
 	hasDrag: () => boolean, begin: () => void,
 ) {
 	if (event.pointerType === 'mouse' || event.button !== 0) return;
-	if (hasDrag() || event.isPrimary === false) { event.preventDefault(); event.stopPropagation(); return; }
+	// Some Android pens report isPrimary=false even for their only contact.
+	if (hasDrag() || (event.pointerType === 'touch' && event.isPrimary === false)) { event.preventDefault(); event.stopPropagation(); return; }
 	owner.current = null;
 	begin();
 	if (!hasDrag()) return;

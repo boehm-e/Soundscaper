@@ -14,6 +14,12 @@ import {
 import { playAndWaitForAdvance } from '../tests/browser/helpers/playback-progress.js';
 
 const appId = 'io.github.boehme.soundscaper';
+// A lost WebView connection must not hold a CI runner until its job timeout.
+const watchdog = setTimeout(() => {
+	console.error('Android smoke exceeded its 10 minute deadline.');
+	process.exit(1);
+}, 10 * 60_000);
+watchdog.unref();
 const evidence = resolve('.android-build/evidence');
 await mkdir(evidence, { recursive: true });
 const devices = await android.devices();
@@ -31,8 +37,16 @@ function mark(step) {
 }
 
 function nativeNode(resourceId, className) {
-	adb('shell', 'uiautomator', 'dump', '/sdcard/soundscaper-smoke-ui.xml');
-	const xml = adb('shell', 'cat', '/sdcard/soundscaper-smoke-ui.xml').toString();
+	let xml;
+	try {
+		// DocumentsUI can briefly return a null accessibility root while opening.
+		// Remove the previous dump so a failed refresh cannot match stale controls.
+		adb('shell', 'rm', '-f', '/sdcard/soundscaper-smoke-ui.xml');
+		adb('shell', 'uiautomator', 'dump', '/sdcard/soundscaper-smoke-ui.xml');
+		xml = adb('shell', 'cat', '/sdcard/soundscaper-smoke-ui.xml').toString();
+	} catch {
+		return null;
+	}
 	for (const node of xml.matchAll(/<node\b[^>]*>/gu)) {
 		const attributes = Object.fromEntries([...node[0].matchAll(/([\w-]+)="([^"]*)"/gu)].map(match => [match[1], match[2]]));
 		if (attributes['resource-id'] === resourceId && (!className || attributes.class === className)) return attributes;
@@ -148,7 +162,7 @@ try {
 	report.error = String(error.stack || error);
 	throw error;
 } finally {
-	if (page) await page.screenshot({ path: resolve(evidence, 'final.png') }).catch(() => {});
+	if (page) await page.screenshot({ path: resolve(evidence, 'final.png'), timeout: 10_000 }).catch(() => {});
 	await writeFile(resolve(evidence, 'report.json'), JSON.stringify(report, null, 2));
 	try {
 		await writeFile(resolve(evidence, 'logcat.txt'), adb('logcat', '-d', '-t', '2500'));

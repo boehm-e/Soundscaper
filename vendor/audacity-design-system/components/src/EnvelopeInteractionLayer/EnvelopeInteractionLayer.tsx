@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Tooltip } from '../Tooltip/Tooltip';
 import { useEnvelopeDragLifecycle } from './useEnvelopeDragLifecycle';
+import { beginEnvelopePointerDrag, bindEnvelopePointerDrag } from './envelope-pointer-input';
 
 const EMPTY_NUMBER_ARRAY: number[] = [];
 
@@ -171,12 +172,14 @@ const EnvelopeInteractionLayerComponent: React.FC<EnvelopeInteractionLayerProps>
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStateRef = useRef<DragState | null>(null);
+  const pointerOwnerRef = useRef<number | null>(null);
+  const eventHandlersRef = useRef<{ move(event: MouseEvent): void; finish(event: MouseEvent): void; cancel(): void } | null>(null);
   const [localHiddenIndices, setLocalHiddenIndices] = useState<number[]>([]);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; db: number } | null>(null);
   const [isNearEnvelope, setIsNearEnvelope] = useState(false);
   const [isHoveringPoint, setIsHoveringPoint] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const { rememberBeforeDrag, finishDrag } = useEnvelopeDragLifecycle(
+  const { rememberBeforeDrag, finishDrag, cancelDrag } = useEnvelopeDragLifecycle(
     dragStateRef, envelopePoints, onEnvelopePointsChange,
     setLocalHiddenIndices, onHiddenPointsChange, onHoveredPointsChange, setTooltip, setIsDragging,
   );
@@ -285,7 +288,6 @@ const EnvelopeInteractionLayerComponent: React.FC<EnvelopeInteractionLayerProps>
     }
   };
 
-  useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!dragStateRef.current || !containerRef.current) return;
 
@@ -484,14 +486,23 @@ const EnvelopeInteractionLayerComponent: React.FC<EnvelopeInteractionLayerProps>
       finishDrag();
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+  eventHandlersRef.current = { move: handleMouseMove, finish: handleMouseUp, cancel: cancelDrag };
+  useEffect(() => {
+    // Native dispatch can flush React effects between listeners. Keep these
+    // subscriptions stable so a release cannot fall into a rebind gap.
+    const move = (event: MouseEvent) => eventHandlersRef.current?.move(event);
+    const finish = (event: MouseEvent) => eventHandlersRef.current?.finish(event);
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', finish);
+    const unbindPointer = bindEnvelopePointerDrag(pointerOwnerRef, () => dragStateRef.current !== null,
+      move, finish, () => eventHandlersRef.current?.cancel());
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      unbindPointer();
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', finish);
     };
-  }, [envelopePoints, duration, width, height, onEnvelopePointsChange]);
+  }, []);
 
   // Handle hover detection
   const handleContainerMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -606,7 +617,10 @@ const EnvelopeInteractionLayerComponent: React.FC<EnvelopeInteractionLayerProps>
     <>
       <div
         ref={containerRef}
+        data-clip-envelope-interactive
         onMouseDown={handleMouseDown}
+        onPointerDown={event => beginEnvelopePointerDrag(event, pointerOwnerRef,
+          () => dragStateRef.current !== null, () => handleMouseDown(event))}
         onMouseMove={handleContainerMouseMove}
         onMouseLeave={handleContainerMouseLeave}
         onClick={(e) => {
@@ -628,6 +642,7 @@ const EnvelopeInteractionLayerComponent: React.FC<EnvelopeInteractionLayerProps>
           height,
           cursor: isDragging ? 'grabbing' : (isHoveringPoint ? 'pointer' : (isNearEnvelope ? 'copy' : 'text')),
           pointerEvents: enabled ? 'auto' : 'none',
+          touchAction: 'none',
           zIndex: 3, // Above canvas (z-index: 2) and dark overlay (z-index: 1)
         }}
       />

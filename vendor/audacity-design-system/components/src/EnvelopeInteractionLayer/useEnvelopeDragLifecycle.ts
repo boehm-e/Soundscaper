@@ -23,17 +23,20 @@ export function useEnvelopeDragLifecycle<Point extends object, Drag>(
 		dragRef.current = null;
 		originalPoints.current = null;
 	}, [dragRef, publishHidden, publishHovered, setDragging, setHidden, setTooltip]);
+	const cancelDrag = useCallback(() => {
+		const original = originalPoints.current;
+		finishDrag();
+		if (original) publishPoints(original);
+	}, [finishDrag, publishPoints]);
 	useEffect(() => {
 		const cancelOnEscape = (event: KeyboardEvent) => {
 			if (event.key !== 'Escape' || !dragRef.current) return;
 			event.preventDefault();
 			event.stopPropagation();
-			const original = originalPoints.current;
-			finishDrag();
-			if (original) publishPoints(original);
+			cancelDrag();
 		};
 		document.addEventListener('keydown', cancelOnEscape);
 		return () => document.removeEventListener('keydown', cancelOnEscape);
-	}, [dragRef, finishDrag, publishPoints]);
-	return { rememberBeforeDrag, finishDrag };
+	}, [dragRef, cancelDrag]);
+	return { rememberBeforeDrag, finishDrag, cancelDrag };
 }

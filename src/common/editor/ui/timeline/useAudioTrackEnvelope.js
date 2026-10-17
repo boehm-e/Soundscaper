@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { mergeDesignEnvelopePoints } from '../../automation.js';
+import { ENVELOPE_POINTER_COMMIT, ENVELOPE_POINTER_CANCEL } from '@soundscaper/design-system/EnvelopeInteractionLayer/envelope-pointer-input';
 
 export function useAudioTrackEnvelope({
 	controller,
@@ -34,7 +35,7 @@ export function useAudioTrackEnvelope({
 			pendingTasks.add(task);
 		};
 		const discardEnvelopeEdit = (event) => {
-			if (event.key !== 'Escape') return;
+			if (event.type !== ENVELOPE_POINTER_CANCEL && event.key !== 'Escape') return;
 			afterEvent(() => {
 				if (!envelopePreviewRef.current.size) return;
 				envelopePreviewRef.current.clear();
@@ -42,7 +43,7 @@ export function useAudioTrackEnvelope({
 			});
 		};
 		const finishEnvelopeEdit = (event) => {
-			if (event.button !== 0) return;
+			if ('button' in event && event.button !== 0) return;
 			afterEvent(() => {
 				const previews = [...envelopePreviewRef.current.values()];
 				if (!previews.length) return;
@@ -56,10 +57,14 @@ export function useAudioTrackEnvelope({
 			});
 		};
 		document.addEventListener('mouseup', finishEnvelopeEdit);
+		document.addEventListener(ENVELOPE_POINTER_COMMIT, finishEnvelopeEdit);
+		document.addEventListener(ENVELOPE_POINTER_CANCEL, discardEnvelopeEdit);
 		document.addEventListener('keydown', discardEnvelopeEdit);
 		return () => {
 			for (const task of pendingTasks) clearTimeout(task);
 			document.removeEventListener('mouseup', finishEnvelopeEdit);
+			document.removeEventListener(ENVELOPE_POINTER_COMMIT, finishEnvelopeEdit);
+			document.removeEventListener(ENVELOPE_POINTER_CANCEL, discardEnvelopeEdit);
 			document.removeEventListener('keydown', discardEnvelopeEdit);
 		};
 	}, [controller, run]);

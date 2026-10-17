@@ -193,7 +193,9 @@ export function useTimelinePointerStart({
 					distance: Math.max(1, Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y)),
 					pixelsPerSecond,
 					midpoint: (points[0].x + points[1].x) / 2,
+					midpointY: (points[0].y + points[1].y) / 2,
 					scrollLeft: readTimelineContentScrollX(scrollRef.current),
+					scrollTop: scrollRef.current?.scrollTop ?? 0,
 				};
 				setSelectionPreview(null);
 				pointerSession.current = null;

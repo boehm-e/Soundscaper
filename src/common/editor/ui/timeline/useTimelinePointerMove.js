@@ -19,6 +19,7 @@ import { resolveTimelineTrimPointerPreview } from './trim-pointer-routing.ts';
 import { previewTimelineSelectionDrag } from './selection-drag-preview.ts';
 import { previewTimelineSelectionBoundaryEdit } from './selection-pointer-edit.ts';
 import { useTimelineSelectionBoundaryCursor } from './useTimelineSelectionBoundaryCursor.ts';
+import { timelineDomScrollForElement } from './timeline-scroll-space.ts';
 
 const NOOP = () => undefined;
 
@@ -171,11 +172,19 @@ export function useTimelinePointerMove({
 					anchorOffset: midpoint - (rect?.left || 0) - panelWidth,
 				};
 				const appliedZoom = run(() => controller.actions.timeline.setZoom(nextZoom));
+				if (Number.isFinite(Number(appliedZoom)) && Number(appliedZoom) === pixelsPerSecond && scrollRef.current) {
+					// Translation with an unchanged zoom still needs to move the view.
+					scrollRef.current.scrollLeft = timelineDomScrollForElement(scrollRef.current,
+						CLIP_CONTENT_OFFSET + anchorSeconds * pixelsPerSecond - pendingPinchAnchorRef.current.anchorOffset);
+				}
+				if (scrollRef.current) {
+					scrollRef.current.scrollTop = session.scrollTop + session.midpointY - (points[0].y + points[1].y) / 2;
+				}
 				if (!Number.isFinite(Number(appliedZoom)) || Number(appliedZoom) === pixelsPerSecond) {
 					pendingPinchAnchorRef.current = null;
 				}
 			}
-			if (touchPointers.current.size !== 1 || pointerSession.current?.kind !== 'track-resize') return;
+			if (touchPointers.current.size !== 1) return;
 		}
 		const session = pointerSession.current;
 		if (session?.pointerId !== undefined && session.pointerId !== event.pointerId) return;

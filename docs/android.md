@@ -5,6 +5,17 @@ application and its WASM/worker assets are bundled in the APK; it does not load
 the editor from soundscaper.org. The desktop Electron build remains independent.
 Android uses Web Audio, not the desktop native audio/plugin hosts.
 
+## Touch editing
+
+- Drag one finger across the waveform body to select a time range. Drag the
+  clip's title strip to move the clip; its trim handles change its length.
+- Move two fingers together to pan the timeline, or spread/pinch them to zoom.
+  Adding the second finger cancels the pending one-finger edit.
+- Turn off the highlighted **Clip gain** (envelope) or **Split tool** button
+  before drawing a normal selection. These tools deliberately own waveform
+  gestures while active.
+- The **Selection** fields at the bottom allow precise start/end adjustment.
+
 ## Build locally
 
 Requirements: Node.js 26.5.0, npm 12.0.1, a **JDK** 21 (not only a JRE), and the

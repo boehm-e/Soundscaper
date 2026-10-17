@@ -20,6 +20,18 @@ void test('a clip press records its pointer identity and refuses a foreign press
 	} finally { await fixture.cleanup(); }
 });
 
+void test('a native touch on the clip header previews and commits the owning movement', async () => {
+	const fixture = await mountTimeline();
+	try {
+		fixture.start(fixture.event(11, 'touch', 100));
+		fixture.move(fixture.event(11, 'touch', 136));
+		fixture.flush.current?.();
+		assert.equal(fixture.preview()?.timelineStartFrame, 36);
+		fixture.finish(fixture.event(11, 'touch', 136));
+		assert.deepEqual(fixture.commits, [['clip', 'track', 36]]);
+	} finally { await fixture.cleanup(); }
+});
+
 void test('a foreign pointer cannot replace the owning clip movement queued for a frame', async () => {
 	const fixture = await mountTimeline();
 	try {

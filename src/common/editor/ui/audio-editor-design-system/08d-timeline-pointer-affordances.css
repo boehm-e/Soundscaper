@@ -15,6 +15,13 @@
 	cursor: text;
 }
 
+/* Timeline pointers own editing and two-finger navigation on these surfaces.
+   Native scrolling would cancel the pointer before a range can be selected. */
+.audio-editor-track-lane,
+[data-ruler] {
+	touch-action: none;
+}
+
 .audio-editor-ruler-viewport,
 .audio-editor-vertical-ruler {
 	cursor: default;

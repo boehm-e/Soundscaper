@@ -26,7 +26,7 @@ export async function prepareAndroidWeb(repositoryRoot) {
 		}
 	}
 	await patchDocuments(destination);
-	await writeFile(resolve(destination, 'android-smoke.html'), '<!doctype html><html><head><title>Android test bootstrap</title></head><body></body></html>');
+	await writeFile(resolve(destination, 'android-smoke.html'), '<!doctype html><html><head><title>Android test bootstrap</title><link rel="icon" href="data:,"></head><body></body></html>');
 	await cp(resolve(repositoryRoot, 'android/web/file-bridge.mjs'), resolve(destination, 'android-file-bridge.mjs'));
 	await writeFile(resolve(destination, 'soundscaper-headers.json'), JSON.stringify({
 		...authoredWildcardResponseHeaders(),

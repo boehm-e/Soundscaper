@@ -19,10 +19,10 @@ on:
       - '.github/workflows/android.yml'
   workflow_dispatch:
     inputs:
-      signed_release:
-        description: Build a signed release APK and Play Store AAB using repository secrets
+      publish_release:
+        description: Publish the validated signed Android preview to GitHub Releases
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -37,6 +37,10 @@ jobs:
     timeout-minutes: 45
     env:
       ANDROID_VERSION_CODE: ${{ github.run_number }}
+      PUBLISH_RELEASE: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish_release) }}
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
+      release_title: ${{ steps.release.outputs.title }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -77,6 +81,8 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Install native Android automation driver
+        run: npx playwright install android
       - name: Verify editor in Android WebView
         uses: reactivecircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808 # v2
         with:
@@ -97,7 +103,7 @@ jobs:
             android/app/build/reports/lint-results-debug.html
           include-hidden-files: true
       - name: Prepare release signing key
-        if: github.event_name == 'workflow_dispatch' && inputs.signed_release
+        if: env.PUBLISH_RELEASE == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -108,25 +114,66 @@ jobs:
           test -n "$ANDROID_KEYSTORE_PASSWORD"
           test -n "$ANDROID_KEY_ALIAS"
           test -n "$ANDROID_KEY_PASSWORD"
+          umask 077
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/soundscaper-release.jks"
           chmod 600 "$RUNNER_TEMP/soundscaper-release.jks"
       - name: Build signed release APK and AAB
-        if: github.event_name == 'workflow_dispatch' && inputs.signed_release
+        if: env.PUBLISH_RELEASE == 'true'
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/soundscaper-release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: ./android/gradlew -p android assembleRelease bundleRelease --no-daemon
+      - name: Verify the release APK signature
+        if: env.PUBLISH_RELEASE == 'true'
+        run: '"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose android/app/build/outputs/apk/release/app-release.apk'
+      - name: Stage versioned release assets and checksums
+        id: release
+        if: env.PUBLISH_RELEASE == 'true'
+        run: node scripts/android-release.mjs
       - name: Upload signed release
-        if: github.event_name == 'workflow_dispatch' && inputs.signed_release
+        if: env.PUBLISH_RELEASE == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: soundscaper-android-release-${{ github.run_number }}
-          path: |
-            android/app/build/outputs/apk/release/*.apk
-            android/app/build/outputs/bundle/release/*.aab
+          path: .android-build/release/
           if-no-files-found: error
       - name: Remove release signing key
         if: always()
         run: rm -f "$RUNNER_TEMP/soundscaper-release.jks"
+
+  publish:
+    name: Publish Android preview
+    needs: build
+    if: needs.build.outputs.release_tag != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download validated signed assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: soundscaper-android-release-${{ github.run_number }}
+          path: release
+      - name: Verify downloaded checksums
+        working-directory: release
+        run: sha256sum --check SHA256SUMS
+      - name: Publish APK, bundle and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
+          RELEASE_TITLE: ${{ needs.build.outputs.release_title }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$GITHUB_SHA"
+          else
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --title "$RELEASE_TITLE" \
+              --notes-file release/release-notes.md --draft --prerelease --latest=false
+          fi
+          gh release upload "$RELEASE_TAG" release/*.apk release/*.aab release/SHA256SUMS --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false \
+            --title "$RELEASE_TITLE" --notes-file release/release-notes.md
+          gh release view "$RELEASE_TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

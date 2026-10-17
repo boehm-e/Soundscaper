@@ -30,39 +30,12 @@ device.setDefaultTimeout(60_000);
 const adb = (...args) => execFileSync('adb', ['-s', device.serial(), ...args], {
 	maxBuffer: 16 * 1024 * 1024, timeout: 60_000,
 });
-const report = { steps: [], consoleErrors: [] };
+const report = { steps: [], consoleErrors: [], httpErrors: [] };
 function mark(step) {
 	report.steps.push(step);
 	console.log(`Android smoke: ${step}`);
 }
 
-function nativeNode(resourceId, className) {
-	let xml;
-	try {
-		// DocumentsUI can briefly return a null accessibility root while opening.
-		// Remove the previous dump so a failed refresh cannot match stale controls.
-		adb('shell', 'rm', '-f', '/sdcard/soundscaper-smoke-ui.xml');
-		adb('shell', 'uiautomator', 'dump', '/sdcard/soundscaper-smoke-ui.xml');
-		xml = adb('shell', 'cat', '/sdcard/soundscaper-smoke-ui.xml').toString();
-	} catch {
-		return null;
-	}
-	for (const node of xml.matchAll(/<node\b[^>]*>/gu)) {
-		const attributes = Object.fromEntries([...node[0].matchAll(/([\w-]+)="([^"]*)"/gu)].map(match => [match[1], match[2]]));
-		if (attributes['resource-id'] === resourceId && (!className || attributes.class === className)) return attributes;
-	}
-	return null;
-}
-
-async function tapNative(resourceId, className) {
-	let node;
-	await expect.poll(() => {
-		node = nativeNode(resourceId, className);
-		return node !== null;
-	}, { timeout: 60_000 }).toBe(true);
-	const bounds = [...node.bounds.matchAll(/\d+/gu)].map(match => Number(match[0]));
-	adb('shell', 'input', 'tap', String(Math.round((bounds[0] + bounds[2]) / 2)), String(Math.round((bounds[1] + bounds[3]) / 2)));
-}
 let page;
 try {
 	await expect.poll(() => adb('shell', 'getprop', 'sys.boot_completed').toString().trim(), { timeout: 120_000 }).toBe('1');
@@ -76,9 +49,12 @@ try {
 	const webview = await device.webView({ socketName: `webview_devtools_remote_${processId}` });
 	page = await webview.page();
 	page.setDefaultTimeout(60_000);
+	page.on('response', response => {
+		if (response.status() >= 400) report.httpErrors.push({ url: response.url(), status: response.status() });
+	});
 	page.on('pageerror', error => report.consoleErrors.push(String(error)));
 	page.on('console', message => {
-		if (message.type() === 'error') report.consoleErrors.push(message.text());
+		if (message.type() === 'error') report.consoleErrors.push(`${message.text()} (${message.location().url})`);
 	});
 	// No remote server is permitted for the baseline editor or its resources.
 	const remoteRequests = [];
@@ -141,11 +117,11 @@ try {
 	await exporting;
 	// The system picker remains a native Android surface outside the WebView.
 	const exportedName = `soundscaper-smoke-${Date.now()}.wav`;
-	await tapNative('android:id/title', 'android.widget.EditText');
-	adb('shell', 'input', 'keycombination', '113', '29'); // Ctrl+A
-	adb('shell', 'input', 'text', exportedName);
-	await expect.poll(() => nativeNode('android:id/title', 'android.widget.EditText')?.text).toBe(exportedName);
-	await tapNative('android:id/button1');
+	// Accessibility sets the complete value atomically; synthetic key input
+	// truncates the extension in the CI emulator.
+	await device.fill({ res: 'android:id/title', clazz: 'android.widget.EditText' }, exportedName);
+	await expect.poll(async () => (await device.info({ res: 'android:id/title', clazz: 'android.widget.EditText' })).text, { timeout: 30_000 }).toBe(exportedName);
+	await device.tap({ res: 'android:id/button1' });
 	await expect(dialog.locator('[data-export-action="start"]')).toBeVisible({ timeout: 90_000 });
 	await expect(editor.locator('[data-status]')).toHaveAttribute('data-state', 'success', { timeout: 90_000 });
 	const output = adb('exec-out', 'cat', `/sdcard/Download/${exportedName}`);

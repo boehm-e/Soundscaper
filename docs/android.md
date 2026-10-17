@@ -57,25 +57,46 @@ explicitly set `ANDROID_SERIAL` to its identifier; the test installs the debug
 APK and creates local test projects and a WAV in Downloads. It never clears
 application data.
 
-The debug APK is signed with the runner's disposable debug key. It is suitable
-for testing; different runners may require uninstalling a previous debug build
-before installation, which deletes that installation's private projects. Export
-projects before uninstalling. Use a stable release key for ongoing distribution.
+## Automatic APK releases
 
-For signed release APK/AAB artifacts, manually dispatch **Android APK** with
-`signed_release` enabled and configure these repository secrets:
+After a trusted branch push (`main`, `feat/android`, or `android/**`), an
+`android-v*` tag, or a manual dispatch, the workflow publishes a GitHub
+**prerelease** only after adapter tests, APK compilation/lint, and the Android
+WebView smoke test all succeed. Pull requests run validation without signing
+secrets or release permissions. Manual dispatch can disable `publish_release`.
 
-- `ANDROID_KEYSTORE_BASE64`: base64-encoded release keystore.
+Each branch build gets its own `android-build-<run number>` tag targeting the
+exact validated commit. Explicit `android-v*` tags retain their name. Download
+the `.apk` from the Releases page to install; the `.aab` is a bundle, not a
+sideloadable package. `SHA256SUMS` covers both artifacts. The publication job
+checks the downloaded bytes before exposing the release; retries require the
+existing tag to resolve to the same source commit.
+
+Configure these repository secrets once:
+
+- `ANDROID_KEYSTORE_BASE64`: base64-encoded keystore.
 - `ANDROID_KEYSTORE_PASSWORD`: keystore password.
 - `ANDROID_KEY_ALIAS`: signing alias.
 - `ANDROID_KEY_PASSWORD`: signing key password.
 
-No release key is generated or committed by this fork. The workflow removes its
-temporary keystore even on failure. It does not publish to Google Play or create
-a public GitHub Release. `ANDROID_VERSION_CODE` defaults to 1 locally and uses
-the workflow run number in CI; maintain a monotonically increasing value when
-changing workflows or distributing updates. The version name comes from
-`package.json`.
+Keep a private backup of this identity: future APKs need the same certificate
+to update an existing installation without deleting its private projects. This
+personal fork's preview pipeline uses the certificate of the locally installed
+development APK for that compatibility. These are preview builds, not Google
+Play production submissions. Use a dedicated production key and a planned
+migration for a separate production distribution.
+
+No private key is committed. Signing secrets are only available after the
+emulator gate on trusted events, and the temporary keystore is removed even
+when a step fails. The debug workflow artifact uses the runner's disposable
+key; prefer the signed release APK for installation and updates. The workflow
+does not publish to Google Play.
+
+`ANDROID_VERSION_CODE` defaults to 1 locally and uses the workflow run number
+in CI. Keep it increasing for local builds installed over a distributed APK:
+for example, `ANDROID_VERSION_CODE=<latest release code> npm run android:build`.
+The version name comes from `package.json`. This change requires no manual
+**Update AI assets** run.
 
 ## Android integration and limits
 

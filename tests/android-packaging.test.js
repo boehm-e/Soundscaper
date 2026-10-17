@@ -25,6 +25,7 @@ test('Android assets preserve the web build, load the native bridge first, and c
 		assert.ok(bundled.indexOf('android-file-bridge.mjs') < bundled.indexOf('/assets/main.js'));
 		assert.match(bundled, /crossorigin src="\/assets\/main.js"/);
 		assert.equal(await readFile(join(root, 'dist/index.html'), 'utf8'), html);
+		assert.match(await readFile(join(root, '.android-build/web/android-smoke.html'), 'utf8'), /rel="icon" href="data:,"/u);
 		const headers = JSON.parse(await readFile(join(root, '.android-build/web/soundscaper-headers.json')));
 		assert.equal(headers['Cross-Origin-Opener-Policy'], 'same-origin');
 		assert.equal(headers['Cross-Origin-Embedder-Policy'], 'credentialless');

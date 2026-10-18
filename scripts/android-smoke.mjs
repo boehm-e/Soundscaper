@@ -99,6 +99,9 @@ try {
 	await playAndWaitForAdvance(editor);
 	await editor.getByRole('button', { name: 'Stop', exact: true }).click();
 	mark('playback clock advances');
+	// Playback can scroll beyond this short fixture before a slow emulator stops.
+	// Restore the visible project before looking for its virtualized clip.
+	await editor.getByRole('button', { name: 'Fit project', exact: true }).click();
 	await closeChromeDrawer(editor);
 	await clipByName(editor, tone.name).click({ position: { x: 24, y: 10 } });
 	await seekOnRuler(page, editor, 100);

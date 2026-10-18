@@ -4,6 +4,7 @@ import type { AudioEditorCommand } from '../../commands/protocol.ts';
 import type { MusicalCutCandidate, MusicalCutReport, MusicalCutRequest } from '../../musical-cut-analysis.ts';
 import { MUSICAL_CUT_RATE, MUSICAL_CUT_MAX_SECONDS } from '../../musical-cut-features.ts';
 import { musicalCutCommand, musicalTrackClips, MusicalCutRefusal } from '../../musical-cut-edit.ts';
+import { createMusicalCutResultWindow, type MusicalCutResultWindow } from '../../musical-cut-result-window.ts';
 import type { AnalysisAudioBuffer, AnalysisRange } from './analysis-service.ts';
 import {
 	EDITOR_PROJECT_TASK_SCOPE, type EditorControllerLifetime, type EditorProjectToken, type EditorTaskScope,
@@ -34,11 +35,13 @@ export interface MusicalCutsInput {
 export interface MusicalCutsResult extends MusicalCutReport {
 	readonly range: AnalysisRange;
 	readonly sampleRate: number;
+	readonly trackEndFrame: number;
 }
 export interface MusicalCutPreview {
 	readonly channels: readonly Float32Array[];
 	readonly sampleRate: number;
 	readonly joinSeconds: number;
+	readonly startSeconds?: number;
 }
 export type MusicalCutsSession = ReturnType<typeof createMusicalCutsSession>;
 
@@ -46,13 +49,15 @@ export type MusicalCutsSession = ReturnType<typeof createMusicalCutsSession>;
 export function createMusicalCutsSession<P extends Project>(dependencies: Dependencies<P>) {
 	let disposed = false;
 	let active: EditorTaskScope | null = null;
+	let windowTask: EditorTaskScope | null = null;
 	let result: MusicalCutsResult | null = null;
 	let owner: { project: P; revision: number; token: EditorProjectToken; input: MusicalCutsInput } | null = null;
-	let prepared: { candidate: MusicalCutCandidate; fadeMs: number; command: AudioEditorCommand } | null = null;
-	return Object.freeze({ analyze, preview, apply, dispose });
+	let prepared: { candidate: MusicalCutCandidate; fadeMs: number; command: AudioEditorCommand; staged?: P } | null = null;
+	return Object.freeze({ analyze, preview, resultExtent, renderResultWindow, apply, dispose });
 
 	async function analyze(input: MusicalCutsInput, signal: AbortSignal, progress: (fraction: number) => void = () => undefined): Promise<MusicalCutsResult> {
 		assertAlive();
+		windowTask?.abort();
 		result = null; owner = null; prepared = null;
 		const project = dependencies.getProject();
 		const revision = project.revision;
@@ -93,7 +98,7 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 			}
 			const report = await dependencies.analyze({ channels: planes, sampleRate: MUSICAL_CUT_RATE, removeSeconds: input.removeSeconds }, combined);
 			assertCurrent(task, project.id, revision, token, combined);
-			result = { ...report, range: { startFrame, endFrame }, sampleRate: rate,
+			result = { ...report, range: { startFrame, endFrame }, sampleRate: rate, trackEndFrame: Math.max(...clips.map(clip => clip.timelineStartFrame + clip.durationFrames)),
 				candidates: report.candidates.map(cut => ({ ...cut,
 					startSeconds: cut.startSeconds + startFrame / rate, endSeconds: cut.endSeconds + startFrame / rate })),
 				sectionSeconds: report.sectionSeconds.map(time => time + startFrame / rate) };
@@ -103,30 +108,73 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 		} finally { finish(task); }
 	}
 
-	async function preview(candidate: MusicalCutCandidate, fadeMs: number, signal: AbortSignal): Promise<MusicalCutPreview> {
+	async function preview(candidate: MusicalCutCandidate, fadeMs: number, signal: AbortSignal, fromSeconds?: number): Promise<MusicalCutPreview> {
 		const { project, revision, token, input } = assertOwner(candidate);
-		const command = prepare(candidate, fadeMs);
 		const rate = dependencies.sampleRate();
-		const startFrame = Math.max(0, Math.round((candidate.startSeconds - 2) * rate));
-		const endFrame = Math.round((candidate.startSeconds + 2) * rate);
+		const extent = resultExtent(candidate, fadeMs);
+		if (fromSeconds !== undefined && (!Number.isFinite(fromSeconds) || fromSeconds < 0 || fromSeconds * rate >= extent.endFrame)) throw new MusicalCutRefusal('range');
+		const startFrame = Math.max(0, Math.round((fromSeconds ?? candidate.startSeconds - 2) * rate));
+		const endFrame = Math.min(extent.endFrame, startFrame + rate * 4);
 		const task = begin();
 		const combined = AbortSignal.any([signal, task.signal]);
 		try {
 			// Audition the actual command on a detached project, including authored effects and fades.
-			const staged = dependencies.stageCommand(project, command);
+			const staged = stagedResult(candidate, fadeMs);
 			const buffer = await dependencies.render(staged, { startFrame, endFrame }, combined, input.trackId);
 			assertCurrent(task, project.id, revision, token, combined);
-			return { sampleRate: buffer.sampleRate, joinSeconds: candidate.startSeconds - startFrame / rate,
+			return { sampleRate: buffer.sampleRate, joinSeconds: candidate.startSeconds - startFrame / rate, startSeconds: startFrame / rate,
 				channels: Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch)) };
 		} finally { finish(task); }
+	}
+
+	function resultExtent(candidate: MusicalCutCandidate, fadeMs: number): AnalysisRange {
+		const { input } = assertOwner(candidate);
+		const staged = stagedResult(candidate, fadeMs);
+		const clips = musicalTrackClips(staged, input.trackId);
+		return { startFrame: 0, endFrame: Math.max(...clips.map(clip => clip.timelineStartFrame + clip.durationFrames)) };
+	}
+
+	/** Render only the visible window, keeping at most eight seconds of full-rate PCM at once. */
+	async function renderResultWindow(candidate: MusicalCutCandidate, fadeMs: number, range: AnalysisRange, columns: number, signal: AbortSignal): Promise<MusicalCutResultWindow> {
+		const { project, revision, token, input } = assertOwner(candidate);
+		const extent = resultExtent(candidate, fadeMs);
+		if (!Number.isSafeInteger(range.startFrame) || !Number.isSafeInteger(range.endFrame)
+			|| range.startFrame < 0 || range.endFrame > extent.endFrame || range.endFrame <= range.startFrame) throw new MusicalCutRefusal('range');
+		const rate = dependencies.sampleRate();
+		const output = createMusicalCutResultWindow(range.startFrame, range.endFrame, rate, columns);
+		const staged = stagedResult(candidate, fadeMs);
+		windowTask?.abort();
+		const task = dependencies.lifetime.startTask('musical-cut-waveform', { scope: EDITOR_PROJECT_TASK_SCOPE });
+		windowTask = task;
+		const combined = AbortSignal.any([signal, task.signal]);
+		try {
+			combined.throwIfAborted();
+			for (let from = range.startFrame; from < range.endFrame; from += rate * 8) {
+				const to = Math.min(range.endFrame, from + rate * 8);
+				const buffer = await dependencies.render(staged, { startFrame: from, endFrame: to }, combined, input.trackId);
+				assertCurrent(task, project.id, revision, token, combined);
+				if (buffer.sampleRate !== rate || buffer.length !== to - from || buffer.numberOfChannels < 1 || buffer.numberOfChannels > 2) throw new MusicalCutRefusal('range');
+				output.append(Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch)));
+			}
+			return output.finish();
+		} finally {
+			if (windowTask === task) windowTask = null;
+			task.finish();
+		}
 	}
 
 	function apply(candidate: MusicalCutCandidate, fadeMs: number, commit: (command: AudioEditorCommand) => unknown): unknown {
 		assertOwner(candidate);
 		const command = prepare(candidate, fadeMs);
 		const value = commit(command);
+		windowTask?.abort();
 		result = null; owner = null; prepared = null;
 		return value;
+	}
+	function stagedResult(candidate: MusicalCutCandidate, fadeMs: number): P {
+		const { project } = assertOwner(candidate);
+		const command = prepare(candidate, fadeMs);
+		return prepared!.staged ??= dependencies.stageCommand(project, command);
 	}
 	function prepare(candidate: MusicalCutCandidate, fadeMs: number): AudioEditorCommand {
 		const { project, input } = assertOwner(candidate);
@@ -171,6 +219,7 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 	function dispose(): void {
 		if (disposed) return;
 		disposed = true;
+		windowTask?.abort(); windowTask = null;
 		if (active) {
 			const task = active; active = null;
 			try { task.assertCurrent(); dependencies.busy(false); } catch { /* Replaced task. */ }

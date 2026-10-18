@@ -6,12 +6,12 @@ import { resolveSelectionRange } from '../../selection-range.ts';
 import { createMusicalCutAudition } from '../../controller/analysis/musical-cut-audition.ts';
 import { formatLocalizedTemplate as format } from '../localization-template.ts';
 import { resolveMusicalCutsCopy } from '../../../i18n/editor-musical-cuts-copy.ts';
+import { MusicalCutSourceTimeline, musicalCutTime as time } from './MusicalCutTimeline.jsx';
+import MusicalCutResultTrack from './MusicalCutResultTrack.jsx';
 import './musical-cuts-dialog.css';
 
-const time = seconds => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
-
 export default function MusicalCutsDialog({ controller, snapshot, copy, onClose }) {
-	const messages = resolveMusicalCutsCopy(copy);
+	const messages = useMemo(() => resolveMusicalCutsCopy(copy), [copy]);
 	const project = snapshot.project;
 	const tracks = project?.tracks.filter(track => track.type === 'audio') ?? [];
 	const [selection] = useState(() => resolveSelectionRange(project, { selectedClipId: snapshot.selectedClipId }));
@@ -21,11 +21,13 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 	const [remove, setRemove] = useState('');
 	const [fade, setFade] = useState('20');
 	const [ready, setReady] = useState(false);
+	const [settingsOpen, setSettingsOpen] = useState(true);
 	const [pending, setPending] = useState(null);
 	const [progress, setProgress] = useState(0);
 	const [result, setResult] = useState(null);
 	const [selected, setSelected] = useState(0);
 	const [heard, setHeard] = useState(null);
+	const [seekFrame, setSeekFrame] = useState(null);
 	const [playing, setPlaying] = useState(false);
 	const [error, setError] = useState('');
 	const session = useRef(null);
@@ -57,7 +59,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 		operation.current?.abort(); audition.stop(); setPlaying(false); setHeard(null); setResult(null);
 	}, [project?.id, project?.revision, audition]);
 	const stop = () => { audition.stop(); setPlaying(false); };
-	const invalidate = () => { stop(); setResult(null); setHeard(null); setError(''); };
+	const invalidate = () => { stop(); setResult(null); setHeard(null); setSeekFrame(null); setError(''); };
 	const perform = async (kind, action) => {
 		operation.current?.abort();
 		const abort = new AbortController(); operation.current = abort;
@@ -68,14 +70,14 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 	};
 	const analyze = () => {
 		if (blocked || pending || !validRemove || !trackId) return;
-		setHeard(null); setResult(null); setProgress(0);
+		setHeard(null); setSeekFrame(null); setResult(null); setProgress(0);
 		void perform('analysis', async signal => {
 			controller.actions.transport.stop();
 			const value = await session.current.analyze({ trackId,
 				range: scope === 'selection' && rangeAvailable ? selection : undefined,
 				removeSeconds: remove.trim() === '' ? undefined : Number(remove),
 			}, signal, value => { if (!signal.aborted) setProgress(value); });
-			if (!signal.aborted) { setResult(value); setSelected(0); }
+			if (!signal.aborted) { setResult(value); setSelected(0); setSettingsOpen(!value.candidates.length); }
 		});
 	};
 	const listen = () => {
@@ -85,8 +87,11 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 		void perform('preview', async signal => {
 			controller.actions.transport.stop();
 			await unlock;
-			const pcm = await session.current.preview(candidate, Number(fade), signal);
-			if (!signal.aborted) { audition.play(pcm); setPlaying(true); setHeard({ candidate, fade }); }
+			const pcm = await session.current.preview(candidate, Number(fade), signal, seekFrame === null ? undefined : seekFrame / result.sampleRate);
+			if (!signal.aborted) {
+				audition.play(pcm); setPlaying(true);
+				setHeard({ candidate, fade, startSeconds: pcm.startSeconds });
+			}
 		});
 	};
 	const apply = () => {
@@ -95,9 +100,11 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 			stop(); session.current.apply(candidate, Number(fade), command => controller.actions.edit.commit(command)); onClose();
 		} catch (cause) { showError(cause); }
 	};
-	return <AudioEditorDialogShell title={messages.title} onClose={onClose} width={720} closeOnOutside={false}>
+	return <AudioEditorDialogShell title={messages.title} onClose={onClose} width={960} closeOnOutside={false}>
 		<div className="audio-editor-musical-cuts">
-			<p>{messages.help}</p>
+			<p>{result?.candidates.length ? messages.visualHelp : messages.help}</p>
+			<details className="audio-editor-musical-cuts__settings" open={settingsOpen} onToggle={event => setSettingsOpen(event.currentTarget.open)}>
+				<summary>{messages.settings}</summary>
 			<div className="audio-editor-musical-cuts__fields">
 				<label>{messages.track}<select value={trackId} disabled={Boolean(pending)} onChange={event => {
 					setTrackId(event.target.value); setScope('track'); invalidate();
@@ -114,28 +121,37 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 			</div>
 			<div className="audio-editor-musical-cuts__actions">
 				<Button disabled={blocked || Boolean(pending) || !trackId || !validRemove} onClick={analyze}>{messages.analyze}</Button>
-				{pending && <Button variant="secondary" onClick={() => operation.current?.abort()}>{messages.cancel}</Button>}
 			</div>
+			</details>
 			{pending && <div role="status">{pending === 'analysis' ? messages.busy : copy.analysisRendering}
 				{pending === 'analysis' && <progress max="1" value={progress} aria-label={messages.busy} />}</div>}
+			{pending && <Button variant="secondary" onClick={() => operation.current?.abort()}>{messages.cancel}</Button>}
 			{result && <>
-				{result.beatSeconds && <p>{format(messages.rhythm, { seconds: result.beatSeconds.toFixed(2) })}</p>}
-				{result.sectionSeconds.length > 0 && <details><summary>{messages.sections}</summary><p>{result.sectionSeconds.map(time).join(' · ')}</p></details>}
+				{candidate && <>
+					<MusicalCutResultTrack key={`${candidate.startSeconds}-${candidate.endSeconds}-${fade}`} session={session.current}
+						candidate={candidate} fadeMs={Number(fade)} result={result} copy={messages} seekFrame={seekFrame}
+						onSeek={frame => { stop(); setSeekFrame(frame); }} playing={playing} audition={audition} playbackStart={heard?.startSeconds ?? 0} />
+					<div className="audio-editor-musical-cuts__actions">
+						<Button variant="secondary" disabled={blocked || Boolean(pending)} onClick={playing ? stop : listen}>{playing ? messages.stop : seekFrame === null ? messages.preview : messages.listenFrom}</Button>
+						<Button disabled={blocked || Boolean(pending) || heard?.candidate !== candidate || heard?.fade !== fade} onClick={apply}>{messages.apply}</Button>
+					</div>
+				</>}
 				{!result.candidates.length && <p role="status">{messages.none}</p>}
 				<fieldset className="audio-editor-musical-cuts__proposals" disabled={Boolean(pending)}>
-					<legend className="kw-audio-editor-sr-only">{messages.title}</legend>
+					<legend>{messages.proposals}</legend>
 					{result.candidates.map((cut, index) => <label key={`${cut.startSeconds}-${cut.endSeconds}`} className="audio-editor-musical-cuts__proposal">
-						<input type="radio" name="musical-cut-proposal" checked={selected === index} onChange={() => { setSelected(index); stop(); setHeard(null); setError(''); }} />
+						<input type="radio" name="musical-cut-proposal" checked={selected === index} onChange={() => { setSelected(index); stop(); setHeard(null); setSeekFrame(null); setError(''); }} />
 						<span><strong>{format(messages.pair, { start: time(cut.startSeconds), end: time(cut.endSeconds) })}</strong>
+							<MusicalCutSourceTimeline waveform={result.waveform} candidate={cut} rangeStart={result.range.startFrame / result.sampleRate} copy={messages} />
 							<small>{format(messages.removed, { duration: (cut.endSeconds - cut.startSeconds).toFixed(2), context: cut.matchingSeconds.toFixed(1) })}</small>
 							{cut.nearSection && <small>{messages.section}</small>}</span>
 					</label>)}
 				</fieldset>
+				{result.sectionSeconds.length > 0 && <details><summary>{messages.sections}</summary>
+					<p>{result.sectionSeconds.map(time).join(' · ')}</p>
+					{result.beatSeconds && <p>{format(messages.rhythm, { seconds: result.beatSeconds.toFixed(2) })}</p>}
+				</details>}
 			</>}
-			{candidate && <div className="audio-editor-musical-cuts__actions">
-				<Button variant="secondary" disabled={blocked || Boolean(pending)} onClick={playing ? stop : listen}>{playing ? messages.stop : messages.preview}</Button>
-				<Button disabled={blocked || Boolean(pending) || heard?.candidate !== candidate || heard?.fade !== fade} onClick={apply}>{messages.apply}</Button>
-			</div>}
 			{error && <p role="alert" className="audio-editor-field-error">{error}</p>}
 			<p className="audio-editor-panel-hint">{messages.previewFirst}</p>
 			<p className="audio-editor-panel-hint">{messages.caution}</p>

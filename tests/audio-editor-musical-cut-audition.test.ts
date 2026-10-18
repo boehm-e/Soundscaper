@@ -8,7 +8,7 @@ function audioHost() {
 	const sources: { onended: (() => void) | null; buffer: unknown; stop(): void; disconnect(): void }[] = [];
 	const planes: Float32Array[][] = [];
 	const context = {
-		state: 'running', destination: {},
+		state: 'running', destination: {}, currentTime: 10,
 		resume: async () => { events.push('resume'); },
 		close: async () => { events.push('close'); },
 		createBuffer(channels: number, frames: number) {
@@ -33,6 +33,8 @@ test('tap unlock precedes playback, a new preview stops the previous audio, clos
 	await unlock;
 	const channels = [new Float32Array([0.1, -0.1]), new Float32Array([0.2, -0.2])];
 	player.play({ channels, sampleRate: 48000, joinSeconds: 0 });
+	Object.defineProperty(host.context, 'currentTime', { value: 11 });
+	assert.equal(player.positionSeconds(), 1);
 	assert.deepEqual(host.planes[0], channels);
 	player.play({ channels, sampleRate: 48000, joinSeconds: 0 });
 	assert.equal(host.sources[0].onended, null);

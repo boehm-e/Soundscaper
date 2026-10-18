@@ -3,6 +3,7 @@ import {
 	musicalCutFeatures, musicalFrameDistance, MUSICAL_CUT_HOP_SECONDS as hop,
 	MUSICAL_CUT_MAX_SECONDS, type MusicalFrame,
 } from './musical-cut-features.ts';
+import { musicalCutWaveform, type MusicalCutWaveform } from './musical-cut-waveform.ts';
 
 export interface MusicalCutRequest {
 	readonly channels: readonly Float32Array[];
@@ -20,13 +21,15 @@ export interface MusicalCutReport {
 	readonly candidates: readonly MusicalCutCandidate[];
 	readonly sectionSeconds: readonly number[];
 	readonly beatSeconds: number | null;
+	readonly waveform?: MusicalCutWaveform;
 }
 
 /** Independent lightweight DSP. See docs/features/musical-cuts.md for method and research references. */
 export function analyzeMusicalCuts(request: MusicalCutRequest): MusicalCutReport {
 	validate(request);
 	const duration = request.channels[0].length / request.sampleRate;
-	const empty: MusicalCutReport = { candidates: [], sectionSeconds: [], beatSeconds: null };
+	const waveform = musicalCutWaveform(request.channels, request.sampleRate);
+	const empty: MusicalCutReport = { candidates: [], sectionSeconds: [], beatSeconds: null, waveform };
 	if (duration < 5 || (request.removeSeconds ?? 0) > duration - 2) return empty;
 	const features = musicalCutFeatures(request.channels, request.sampleRate);
 	const maxEnergy = Math.max(...features.map(frame => frame.energy));
@@ -85,7 +88,7 @@ export function analyzeMusicalCuts(request: MusicalCutRequest): MusicalCutReport
 		candidates.push(candidate);
 		if (candidates.length === 12) break;
 	}
-	return { candidates, sectionSeconds: sections.map(i => i * hop), beatSeconds: beat };
+	return { candidates, sectionSeconds: sections.map(i => i * hop), beatSeconds: beat, waveform };
 }
 
 function validate({ channels, sampleRate, removeSeconds }: MusicalCutRequest): void {

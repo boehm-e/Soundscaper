@@ -11,7 +11,9 @@ export function createMusicalCutAudition({ createContext, onEnded }: AuditionOpt
 	let context: AudioContext | null = null;
 	let source: AudioBufferSourceNode | null = null;
 	let disposed = false;
-	return Object.freeze({ unlock, play, stop, dispose });
+	let startedAt = 0;
+	return Object.freeze({ unlock, play, stop, dispose, positionSeconds });
+	function positionSeconds(): number { return source && context ? Math.max(0, context.currentTime - startedAt) : 0; }
 	async function unlock(): Promise<void> {
 		if (disposed) throw new DOMException('Audition closed.', 'AbortError');
 		context ??= createContext();
@@ -30,6 +32,7 @@ export function createMusicalCutAudition({ createContext, onEnded }: AuditionOpt
 			next.disconnect(); source = null; onEnded();
 		};
 		source = next;
+		startedAt = context.currentTime;
 		next.start();
 	}
 	function stop(): void {

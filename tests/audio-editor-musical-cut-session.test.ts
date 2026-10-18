@@ -108,7 +108,7 @@ function harness(renderGate?: Promise<void>) {
 		analyze: async () => ({ candidates: [{ startSeconds: 4, endSeconds: 12, cost: 0, matchingSeconds: 4, nearSection: false }],
 			sectionSeconds: [8], beatSeconds: 0.5 }),
 	});
-	return { session, lifetime, generation, busy, renders, change: () => { current = { ...current, revision: current.revision + 1 }; }, getProject: () => current };
+	return { session, lifetime, generation, busy, renders, hold: (gate: Promise<void>) => { renderGate = gate; }, change: () => { current = { ...current, revision: current.revision + 1 }; }, getProject: () => current };
 }
 test('chunked analysis maps a selection to absolute timeline frames and auditions the staged command', async () => {
 	const h = harness();
@@ -168,4 +168,43 @@ test('a superseded analysis cannot clear the newer task busy state', async () =>
 	release(); await assert.rejects(work, { name: 'AbortError' });
 	assert.deepEqual(h.busy, [true]);
 	h.session.dispose(); newer.finish();
+});
+
+test('result navigation renders the exact staged edit in bounded chunks, with exact PCM at sample zoom', async () => {
+	const h = harness(), signal = new AbortController().signal;
+	const report = await h.session.analyze({ trackId: 'track' }, signal);
+	const cut = report.candidates[0];
+	assert.equal(report.trackEndFrame, rate * 26);
+	const extent = h.session.resultExtent(cut, 20);
+	assert.deepEqual(extent, { startFrame: 0, endFrame: rate * 18 });
+	const renderedBefore = h.renders.length;
+	const window = await h.session.renderResultWindow(cut, 20, extent, 800, signal);
+	assert.deepEqual(h.renders.slice(renderedBefore).map(r => r.endFrame - r.startFrame), [rate * 8, rate * 8, rate * 2]);
+	assert.ok(h.renders.slice(renderedBefore).every(r => r.revision > h.getProject().revision));
+	assert.equal(window.channels[0].maximum.length, 800); assert.equal(window.pcm, undefined);
+	const exact = await h.session.renderResultWindow(cut, 20, { startFrame: rate * 6, endFrame: rate * 6 + 100 }, 800, signal);
+	assert.equal(exact.pcm?.[0].length, 100);
+	assert.equal(exact.pcm?.[0][0], Math.fround(0.2));
+	const playback = await h.session.preview(cut, 20, signal, 17);
+	assert.equal(playback.startSeconds, 17); assert.equal(playback.channels[0].length, rate);
+	assert.equal(h.getProject().clips.length, 2);
+	await assert.rejects(h.session.renderResultWindow(cut, 20, { startFrame: 0, endFrame: extent.endFrame + 1 }, 800, signal), /range/);
+	h.session.dispose();
+});
+test('superseded, stale and closed result windows never publish a late render', async () => {
+	for (const invalidate of ['supersede', 'revision', 'dispose']) {
+		const h = harness(), signal = new AbortController().signal;
+		const report = await h.session.analyze({ trackId: 'track' }, signal);
+		let release: () => void = () => undefined;
+		h.hold(new Promise<void>(resolve => { release = resolve; }));
+		const range = { startFrame: 0, endFrame: rate * 4 };
+		const pending = h.session.renderResultWindow(report.candidates[0], 20, range, 800, signal);
+		const newer = invalidate === 'supersede' ? h.session.renderResultWindow(report.candidates[0], 20, range, 400, signal) : null;
+		if (invalidate === 'revision') h.change();
+		if (invalidate === 'dispose') h.session.dispose();
+		release();
+		await assert.rejects(pending);
+		if (newer) assert.equal((await newer).channels[0].maximum.length, 400);
+		h.session.dispose();
+	}
 });

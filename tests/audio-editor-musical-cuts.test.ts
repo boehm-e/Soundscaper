@@ -16,6 +16,7 @@ function music(seconds = 24, inverted = false) {
 test('finds repeated musical sequences at the requested duration, with room to audition both sides', () => {
 	const result = analyzeMusicalCuts({ channels: [music()], sampleRate: rate, removeSeconds: 8 });
 	assert.ok(result.candidates.length > 0);
+	assert.equal(result.waveform?.durationSeconds, 24);
 	for (const cut of result.candidates) {
 		assert.ok(Math.abs(cut.endSeconds - cut.startSeconds - 8) < 0.35);
 		assert.ok(cut.startSeconds >= 1 && cut.endSeconds <= 23);

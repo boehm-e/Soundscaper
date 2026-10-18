@@ -6,6 +6,22 @@ duration filters suggestions to nearby removal lengths. Listen to the four-secon
 join preview, then apply. One Undo restores the entire edit. Later clips on that
 track ripple earlier; other tracks retain their timing.
 
+Each proposal shows the source waveform on a common timeline scale. Its red span
+is the part to remove, bracketed by markers A and B. Selecting one opens a detached
+result track with the same Audacity waveform painter and timeline ruler as the
+main editor, including separate stereo channels, min/max/RMS and individual
+samples at high zoom. The A → B marker stays at the actual join. The renderer
+calculates only the visible result window in eight-second chunks; overview
+min/max/RMS storage is bounded by the viewport width, and sample zoom retains
+exact PCM. No audio from the real project is changed by this preview.
+
+Pinch or use + / − to zoom, drag to pan, or use the horizontal navigation slider.
+Ctrl/Command-wheel zooms around the pointer. **Join** centers four seconds around
+the cut; **Whole track** fits the complete result. Tap with a finger or pen to
+place the preview cursor, then listen to up to four seconds from there. Without a
+cursor, listening starts two seconds before the join. Playback shows a moving
+cursor. Analysis settings collapse to give the track room.
+
 The dialog works with ordinary buttons, radio cards and native selects, including
 touch and pen input in the Android WebView. Its controls have at least 44-pixel
 targets. Opening it does not change the timeline selection. Analysis never

@@ -5,6 +5,7 @@ import {
 } from './musical-cut-features.ts';
 import { finishMusicalCutSearch, searchMusicalCutPlan, type MusicalCutSearchPlan } from './musical-cut-search.ts';
 import { musicalCutWaveform, type MusicalCutWaveform } from './musical-cut-waveform.ts';
+import { analyzeMusicalPhrases } from './musical-cut-phrases.ts';
 
 export interface MusicalCutRequest {
 	readonly channels: readonly Float32Array[];
@@ -12,6 +13,7 @@ export interface MusicalCutRequest {
 	readonly removeSeconds?: number;
 	readonly toleranceSeconds?: number;
 	readonly deepSearch?: boolean;
+	readonly respectPhrases?: boolean;
 }
 export interface MusicalCutCandidate {
 	readonly startSeconds: number;
@@ -21,6 +23,7 @@ export interface MusicalCutCandidate {
 	readonly durationScore: number | null;
 	readonly matchingSeconds: number;
 	readonly nearSection: boolean;
+	readonly phraseScore?: number | null;
 }
 export interface MusicalCutReport {
 	readonly candidates: readonly MusicalCutCandidate[];
@@ -28,6 +31,10 @@ export interface MusicalCutReport {
 	readonly beatSeconds: number | null;
 	readonly waveform?: MusicalCutWaveform;
 	readonly search?: Readonly<{ points: number; pairs: number; distances: number; workers: number; deep: boolean }>;
+	readonly phrases?: Readonly<{
+		confidence: number; beatConfidence: number; meter: number | null; meterConfidence: number;
+		boundaries: readonly Readonly<{ seconds: number; strength: number }>[];
+	}>;
 }
 
 /** Synchronous reference entry; browser orchestration can partition the same search plan. */
@@ -47,6 +54,7 @@ export function prepareMusicalCutSearch(request: MusicalCutRequest): MusicalCutS
 	const peak = Math.max(0, ...features.map(frame => frame.energy));
 	const frames = peak < 1e-5 ? [] : features;
 	const beat = frames.length ? beatPeriod(frames) : null;
+	const phrases = request.respectPhrases ? analyzeMusicalPhrases(frames, beat) : undefined;
 	const sections = frames.length ? sectionBoundaries(frames) : [];
 	const context = Math.max(20, Math.round((beat ? beat * 4 : 2) / hop));
 	const margin = Math.max(context, 20);
@@ -58,12 +66,14 @@ export function prepareMusicalCutSearch(request: MusicalCutRequest): MusicalCutS
 		if (request.deepSearch) dense.push(i);
 	}
 	const stride = Math.max(1, Math.ceil(anchors.length / 900));
-	const sparse = anchors.filter((_, index) => index % stride === 0);
+	const structural = phrases?.confidence && phrases.confidence >= 0.2 ? phrases.boundaries.map(point => point.frame)
+		.filter(i => i >= margin && i < frames.length - margin && frames[i].energy >= peak * 0.02) : [];
+	const sparse = [...new Set([...structural, ...sample(anchors.filter((_, index) => index % stride === 0), 900 - structural.length)])].sort((a, b) => a - b);
 	const points = request.deepSearch ? [...new Set([...sparse, ...sample(dense, 6000 - sparse.length)])].sort((a, b) => a - b) : sparse;
 	// Float64 retains the existing normalized features and precomputed log-level precision.
 	const packed = new Float64Array(frames.length * 19);
 	frames.forEach((frame, i) => { packed.set(frame.chroma, i * 19); packed.set(frame.bands, i * 19 + 12); packed[i * 19 + 18] = Math.log(frame.energy + 1e-8); });
-	return { packed, points, sections, context, beat, tolerance, target: request.removeSeconds, minimumLogEnergy: Math.log(peak * 0.02 + 1e-8), deep: request.deepSearch === true, waveform };
+	return { packed, points, sections, context, beat, tolerance, target: request.removeSeconds, minimumLogEnergy: Math.log(peak * 0.02 + 1e-8), deep: request.deepSearch === true, waveform, phrases };
 }
 function sample(values: readonly number[], maximum: number): number[] {
 	if (values.length <= maximum) return [...values];

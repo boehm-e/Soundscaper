@@ -37,6 +37,7 @@ export interface MusicalCutsInput {
 	readonly removeSeconds?: number;
 	readonly toleranceSeconds?: number;
 	readonly deepSearch?: boolean;
+	readonly respectPhrases?: boolean;
 }
 export interface MusicalCutsResult extends MusicalCutReport {
 	readonly range: AnalysisRange;
@@ -122,12 +123,13 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 				}
 				progress((to - startFrame) / (endFrame - startFrame) * 0.8);
 			}
-			const report = await dependencies.analyze({ channels: planes, sampleRate: MUSICAL_CUT_RATE, removeSeconds: input.removeSeconds, toleranceSeconds: input.toleranceSeconds, deepSearch: input.deepSearch }, combined);
+			const report = await dependencies.analyze({ channels: planes, sampleRate: MUSICAL_CUT_RATE, removeSeconds: input.removeSeconds, toleranceSeconds: input.toleranceSeconds, deepSearch: input.deepSearch, respectPhrases: input.respectPhrases }, combined);
 			assertCurrent(task, project.id, revision, token, combined);
 			result = { ...report, range: { startFrame, endFrame }, sampleRate: rate, trackEndFrame: Math.max(...clips.map(clip => clip.timelineStartFrame + clip.durationFrames)),
 				candidates: report.candidates.map(cut => ({ ...cut,
 					startSeconds: cut.startSeconds + startFrame / rate, endSeconds: cut.endSeconds + startFrame / rate })),
-				sectionSeconds: report.sectionSeconds.map(time => time + startFrame / rate) };
+				sectionSeconds: report.sectionSeconds.map(time => time + startFrame / rate),
+				...(report.phrases ? { phrases: { ...report.phrases, boundaries: report.phrases.boundaries.map(point => ({ ...point, seconds: point.seconds + startFrame / rate })) } } : {}) };
 			owner = { project, revision, token, input };
 			progress(1);
 			return result;

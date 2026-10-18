@@ -10,6 +10,7 @@ import { createMusicalCutsSession } from '../src/common/editor/controller/analys
 import { EditorControllerLifetime, EditorProjectGeneration } from '../src/common/editor/controller/shared/lifecycle.ts';
 import { createSoundscaperProject } from '../src/soundscaper/editor-project.ts';
 import { applySoundscaperProjectCommand } from '../src/soundscaper/editor-project-commands.ts';
+import type { MusicalCutRequest } from '../src/common/editor/musical-cut-analysis.ts';
 
 const rate = 48_000;
 function clipOf(p: unknown, id: string) {
@@ -96,6 +97,7 @@ function harness(renderGate?: Promise<void>, sample?: (frame: number) => number)
 	const generation = new EditorProjectGeneration(); generation.activate(current.id);
 	const busy: boolean[] = [];
 	const renders: { startFrame: number; endFrame: number; revision: number }[] = [];
+	const requests: MusicalCutRequest[] = [];
 	const session = createMusicalCutsSession({ getProject: () => current, sampleRate: () => rate, lifetime,
 		stageCommand: (p, command) => applyEditorCommand(p, command),
 		captureProject: () => generation.capture(), assertProject: token => generation.assertCurrent(token),
@@ -107,11 +109,24 @@ function harness(renderGate?: Promise<void>, sample?: (frame: number) => number)
 				: new Float32Array(range.endFrame - range.startFrame).fill(0.2);
 			return { sampleRate: rate, numberOfChannels: 1, length: channel.length, getChannelData: () => channel };
 		},
-		analyze: async () => ({ candidates: [{ startSeconds: 4, endSeconds: 12, cost: 0, musicScore: 100, durationScore: null, matchingSeconds: 4, nearSection: false }],
-			sectionSeconds: [8], beatSeconds: 0.5 }),
+		analyze: async request => {
+			requests.push(request);
+			return { candidates: [{ startSeconds: 4, endSeconds: 12, cost: 0, musicScore: 100, durationScore: null, matchingSeconds: 4, nearSection: false }],
+				sectionSeconds: [8], beatSeconds: 0.5,
+				...(request.respectPhrases ? { phrases: { confidence: 0.8, beatConfidence: 0.9, meter: 3, meterConfidence: 0.7, boundaries: [{ seconds: 4, strength: 0.8 }] } } : {}) };
+		},
 	});
-	return { session, lifetime, generation, busy, renders, hold: (gate: Promise<void>) => { renderGate = gate; }, change: () => { current = { ...current, revision: current.revision + 1 }; }, getProject: () => current };
+	return { session, lifetime, generation, busy, renders, requests, hold: (gate: Promise<void>) => { renderGate = gate; }, change: () => { current = { ...current, revision: current.revision + 1 }; }, getProject: () => current };
 }
+test('phrase settings reach analysis and selection-relative markers map to absolute timeline time once', async () => {
+	const h = harness();
+	const result = await h.session.analyze({ trackId: 'track', respectPhrases: true,
+		range: { startFrame: rate * 2, endFrame: rate * 22 } }, new AbortController().signal);
+	assert.equal(h.requests[0].respectPhrases, true);
+	assert.deepEqual(result.phrases?.boundaries, [{ seconds: 6, strength: 0.8 }]);
+	assert.equal(result.phrases?.meter, 3);
+	h.session.dispose();
+});
 test('chunked analysis maps a selection to absolute timeline frames and auditions the staged command', async () => {
 	const h = harness();
 	const result = await h.session.analyze({ trackId: 'track', range: { startFrame: rate * 2, endFrame: rate * 22 } }, new AbortController().signal);

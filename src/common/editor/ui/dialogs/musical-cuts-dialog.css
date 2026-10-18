@@ -30,6 +30,9 @@
 .audio-editor-musical-timeline__wave { fill: var(--text); opacity: 0.65; }
 .audio-editor-musical-timeline__removed { fill: #df526c; opacity: 0.35; }
 .audio-editor-musical-timeline__marker { stroke: #a6213b; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.audio-editor-musical-timeline__phrase { stroke: #b77916; stroke-width: 1.5; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; }
+.audio-editor-musical-result__phrase { position: absolute; top: 60px; bottom: 0; border-left: 2px dashed #b77916; pointer-events: none; z-index: 2; }
+.audio-editor-musical-cuts__phrase-summary { display: grid; gap: 6px; }
 .audio-editor-musical-timeline__pin { position: absolute; top: 0; transform: translateX(-50%); border-radius: 3px; padding: 1px 5px; background: #a6213b; color: white; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .audio-editor-musical-timeline__axis { display: flex; justify-content: space-between; gap: 8px; padding-top: 4px; font-size: 11px; }
 .audio-editor-musical-join__caption { font-size: 11px; color: var(--muted); }

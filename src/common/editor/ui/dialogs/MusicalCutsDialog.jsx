@@ -21,6 +21,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 	const [remove, setRemove] = useState('');
 	const [tolerance, setTolerance] = useState('5');
 	const [deepSearch, setDeepSearch] = useState(false);
+	const [respectPhrases, setRespectPhrases] = useState(false);
 	const [sort, setSort] = useState(/** @returns {import('../../musical-cut-ranking.ts').MusicalCutSort} */ () => 'music');
 	const [fade, setFade] = useState('20');
 	const [ready, setReady] = useState(false);
@@ -80,7 +81,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 				range: scope === 'selection' && rangeAvailable ? selection : undefined,
 				removeSeconds: remove.trim() === '' ? undefined : Number(remove),
 				toleranceSeconds: remove.trim() === '' ? undefined : Number(tolerance),
-				deepSearch,
+				deepSearch, respectPhrases,
 			}, signal, value => { if (!signal.aborted) setProgress(value); });
 			if (!signal.aborted) { setResult(value); setSelected(0); if (remove.trim() === '') setSort('music'); setSettingsOpen(!value.candidates.length); }
 		});
@@ -114,6 +115,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 					{[0, 5, 10, 20, 50, 100].map(value => <option key={value} value={value}>{`${value} ms`}</option>)}
 				</select></label>
 				<label className="audio-editor-musical-cuts__deep"><input type="checkbox" checked={deepSearch} disabled={Boolean(pending)} onChange={event => { setDeepSearch(event.target.checked); invalidate(); }} /><span>{messages.deepSearch}<small>{messages.deepSearchHelp}</small></span></label>
+				<label className="audio-editor-musical-cuts__deep"><input type="checkbox" checked={respectPhrases} disabled={Boolean(pending)} onChange={event => { setRespectPhrases(event.target.checked); invalidate(); }} /><span>{messages.respectPhrases}<small>{messages.phraseHelp}</small></span></label>
 			</div>
 			<p className="audio-editor-panel-hint">{messages.toleranceHelp}</p>
 			<div className="audio-editor-musical-cuts__actions">
@@ -124,6 +126,11 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 				{pending === 'analysis' && <progress max="1" value={progress} aria-label={messages.busy} />}</div>}
 			{pending && <Button variant="secondary" onClick={() => operation.current?.abort()}>{messages.cancel}</Button>}
 			{result && <>
+				{result.phrases && <div className="audio-editor-musical-cuts__phrase-summary">
+					<p>{result.phrases.confidence < 0.2 ? messages.phrasesUncertain : format(messages.phraseSummary, { score: (result.phrases.confidence * 100).toFixed(0) })}</p>
+					<p className="audio-editor-panel-hint">{result.phrases.meter ? format(messages.phraseMeter, { beats: result.phrases.meter }) : messages.phraseMeterUncertain}</p>
+					{result.phrases.boundaries.length > 0 && <details><summary>{messages.phraseBoundaries}</summary><p>{result.phrases.boundaries.map(point => time(point.seconds)).join(' · ')}</p></details>}
+				</div>}
 				{candidate && <>
 					<MusicalCutResultTrack key={`${candidate.startSeconds}-${candidate.endSeconds}-${fade}`} session={session.current}
 						candidate={candidate} fadeMs={Number(fade)} result={result} copy={messages} editorCopy={copy} seekFrame={seekFrame} transport={transport} blocked={blocked || Boolean(pending)} onAudition={() => setHeard({ candidate, fade })}
@@ -144,12 +151,13 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 					{proposals.map(cut => <label key={`${cut.startSeconds}-${cut.endSeconds}`} className="audio-editor-musical-cuts__proposal">
 						<input type="radio" name="musical-cut-proposal" checked={candidate === cut} onChange={() => { setSelected(result.candidates.indexOf(cut)); stop(); setHeard(null); setSeekFrame(null); setError(''); }} />
 						<span><strong>{format(messages.pair, { start: time(cut.startSeconds), end: time(cut.endSeconds) })}</strong>
-							<MusicalCutSourceTimeline waveform={result.waveform} candidate={cut} rangeStart={result.range.startFrame / result.sampleRate} copy={messages} />
+							<MusicalCutSourceTimeline waveform={result.waveform} candidate={cut} rangeStart={result.range.startFrame / result.sampleRate} phrases={result.phrases} copy={messages} />
 							<small className="audio-editor-musical-cuts__scores">
 								<span>{format(messages.musicScore, { score: cut.musicScore.toFixed(1) })}</span>
 								<span>{format(messages.durationScore, { score: cut.durationScore === null ? '—' : cut.durationScore.toFixed(1) })}</span>
 								{cut.durationScore !== null && <span>{format(messages.averageScore, { score: musicalCutRank(cut, 'average').toFixed(1) })}</span>}
 							</small>
+							{result.phrases && <small>{format(messages.phraseScore, { score: cut.phraseScore == null ? '—' : cut.phraseScore.toFixed(1) })}</small>}
 							<small>{format(messages.removed, { duration: (cut.endSeconds - cut.startSeconds).toFixed(2), context: cut.matchingSeconds.toFixed(1) })}</small>
 							{cut.nearSection && <small>{messages.section}</small>}</span>
 					</label>)}

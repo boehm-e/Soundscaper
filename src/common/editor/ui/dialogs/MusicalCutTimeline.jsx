@@ -15,7 +15,7 @@ function wavePath(wave, offset, span, scale) {
 }
 
 /** Every proposal uses the same source scale, so its red span is directly comparable. */
-export function MusicalCutSourceTimeline({ waveform, candidate, rangeStart, copy }) {
+export function MusicalCutSourceTimeline({ waveform, candidate, rangeStart, phrases, copy }) {
 	if (!waveform?.durationSeconds) return null;
 	const a = clamp((candidate.startSeconds - rangeStart) / waveform.durationSeconds);
 	const b = clamp((candidate.endSeconds - rangeStart) / waveform.durationSeconds);
@@ -23,6 +23,8 @@ export function MusicalCutSourceTimeline({ waveform, candidate, rangeStart, copy
 		<svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
 			<path className="audio-editor-musical-timeline__wave" d={wavePath(waveform, 0, width, peak([waveform]))} />
 			<rect className="audio-editor-musical-timeline__removed" x={a * width} y="0" width={Math.max(1, (b - a) * width)} height={height} />
+			{phrases?.boundaries.map(point => <line key={point.seconds} className="audio-editor-musical-timeline__phrase"
+				x1={(point.seconds - rangeStart) / waveform.durationSeconds * width} x2={(point.seconds - rangeStart) / waveform.durationSeconds * width} y1="0" y2={height} />)}
 			<line className="audio-editor-musical-timeline__marker" x1={a * width} x2={a * width} y1="0" y2={height} />
 			<line className="audio-editor-musical-timeline__marker" x1={b * width} x2={b * width} y1="0" y2={height} />
 		</svg>

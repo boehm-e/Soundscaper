@@ -3,6 +3,14 @@ import { resolveEditorCopyScope } from './editor-copy-scope.ts';
 
 export const MUSICAL_CUTS_COPY_BY_LOCALE = Object.freeze({
 	en: Object.freeze({
+		respectPhrases: "Respect musical phrases",
+		phraseHelp: "Prefer matching phrase positions using beats, repetition and structural changes. A soft preference, without a fixed phrase length. Included in the Music score.",
+		phraseSummary: "Dashed amber markers: possible phrase boundaries · structure index: {score}/100",
+		phraseBoundaries: "Possible phrase boundaries",
+		phraseMeter: "Estimated meter: {beats} beats per bar",
+		phraseMeterUncertain: "Meter uncertain; no bar alignment imposed.",
+		phrasesUncertain: "Too little evidence for musical phrases. Acoustic ranking is retained.",
+		phraseScore: "Phrase alignment: {score}/100",
 		searchSummary: "{points} analysis points",
 		deepSearch: "Deep search",
 		deepSearchHelp: "Up to 6,000 points plus local refinement. Takes longer; keeps the interface responsive.",
@@ -73,6 +81,14 @@ export const MUSICAL_CUTS_COPY_BY_LOCALE = Object.freeze({
 		errorEmpty: "This track has no audio clips.",
 	}),
 	de: Object.freeze({
+		respectPhrases: "Musikalische Phrasen berücksichtigen",
+		phraseHelp: "Passende Phrasenpositionen anhand von Schlägen, Wiederholungen und Strukturwechseln bevorzugen. Flexible Präferenz ohne feste Phrasenlänge. Fließt in den Musikwert ein.",
+		phraseSummary: "Gestrichelte ockerfarbene Marker: mögliche Phrasengrenzen · Strukturindex: {score}/100",
+		phraseBoundaries: "Mögliche Phrasengrenzen",
+		phraseMeter: "Geschätzte Taktart: {beats} Schläge pro Takt",
+		phraseMeterUncertain: "Taktart unsicher; keine Taktausrichtung erzwungen.",
+		phrasesUncertain: "Zu wenige Hinweise auf musikalische Phrasen. Die akustische Rangfolge bleibt erhalten.",
+		phraseScore: "Phrasenausrichtung: {score}/100",
 		searchSummary: "{points} Analysepunkte",
 		deepSearch: "Gründliche Suche",
 		deepSearchHelp: "Bis zu 6.000 Punkte und lokale Verfeinerung. Dauert länger; die Oberfläche bleibt bedienbar.",

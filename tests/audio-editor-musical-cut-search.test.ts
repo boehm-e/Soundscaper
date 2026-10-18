@@ -62,3 +62,27 @@ test('only sufficiently large searches use parallel dispatch', () => {
 	assert.equal(musicalCutParallelSearchUseful(large), true);
 	assert.equal(musicalCutParallelSearchUseful({ ...large, target: 20, tolerance: 5 }), false);
 });
+
+test('phrase analysis survives worker partitioning, respects duration bounds and remains opt-in', () => {
+	const rate = 8000, channels = [Float32Array.from({ length: rate * 64 }, (_, i) => {
+		const t = i / rate, beat = Math.floor(t * 2), note = [220, 277.18, 329.63, 246.94][Math.floor(beat / 4) % 4];
+		return (0.05 + (beat % 4 === 0 ? 0.5 : 0.2) * Math.exp(-(t % 0.5) * 24)) * Math.sin(2 * Math.PI * note * t);
+	})];
+	const input = { channels, sampleRate: rate, removeSeconds: 8, toleranceSeconds: 0.5 };
+	const plain = analyzeMusicalCuts(input);
+	assert.deepEqual(analyzeMusicalCuts({ ...input, respectPhrases: false }), plain);
+	assert.equal(plain.phrases, undefined);
+	const p = prepareMusicalCutSearch({ ...input, deepSearch: true, respectPhrases: true });
+	assert.ok(p.phrases && p.phrases.beats.length > 40);
+	const serial = finishMusicalCutSearch(p, [searchMusicalCutPlan(p)], 1);
+	const clone = structuredClone(p);
+	const parallel = finishMusicalCutSearch(clone, [searchMusicalCutPlan(clone, 0, 2), searchMusicalCutPlan(clone, 1, 2)], 2);
+	assert.deepEqual(parallel.candidates, serial.candidates);
+	assert.deepEqual(parallel.phrases, serial.phrases);
+	assert.ok(serial.phrases && serial.phrases.confidence >= 0.2);
+	assert.ok(serial.phrases.boundaries.length > 0);
+	assert.ok(serial.candidates.length > 0);
+	assert.ok(serial.candidates.every(cut => cut.phraseScore !== null && cut.phraseScore !== undefined && Math.abs(cut.endSeconds - cut.startSeconds - 8) <= 0.5 + 1e-8));
+	const texture = { ...input, channels: [new Float32Array(rate * 10)], respectPhrases: true };
+	assert.equal(analyzeMusicalCuts(texture).phrases?.confidence, 0);
+});

@@ -180,6 +180,13 @@ export default function MusicalCutResultTrack({ session, candidate, fadeMs, resu
 				</div>
 				{expanded && resume > 0 && marker < 100 && <div className="audio-editor-musical-result__removed" data-removed-audio="true"
 					style={{ left: `${Math.max(0, marker)}%`, width: `${Math.min(100, resume) - Math.max(0, marker)}%` }}><span>{original ? copy.includedRegion : copy.skippedRegion}</span></div>}
+				{result.phrases?.boundaries.map(point => {
+					const frame = Math.round(point.seconds * sampleRate);
+					if (!expanded && frame >= cut.start && frame < cut.end) return null;
+					const x = percent(expanded ? frame : musicalCutResultFrame(frame, cut.start, cut.end));
+					return x < 0 || x > 100 ? null : <div key={point.seconds} className="audio-editor-musical-result__phrase" aria-hidden="true"
+						style={{ left: `${x}%` }} />;
+				})}
 				{marker >= 0 && marker <= 100 && <div className="audio-editor-musical-result__join" style={{ left: `${marker}%` }}><span>{expanded ? 'A' : copy.joinMarker}</span></div>}
 				{expanded && resume >= 0 && resume <= 100 && <div className="audio-editor-musical-result__join" style={{ left: `${resume}%` }}><span>{'B'}</span></div>}
 				{cursor !== null && cursor >= 0 && cursor <= 100 && <div className="audio-editor-musical-result__cursor" style={{ left: `${cursor}%` }} />}

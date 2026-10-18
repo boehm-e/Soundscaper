@@ -3,6 +3,7 @@ import type { MusicalCutCandidate, MusicalCutReport } from './musical-cut-analys
 import type { MusicalCutWaveform } from './musical-cut-waveform.ts';
 import { MUSICAL_CUT_HOP_SECONDS as hop } from './musical-cut-features.ts';
 import { musicalCutScores, shortlistMusicalCuts, selectMusicalCuts } from './musical-cut-ranking.ts';
+import { musicalPhrasePairScore, type MusicalPhraseAnalysis } from './musical-cut-phrases.ts';
 
 export interface MusicalCutSearchPlan {
 	readonly packed: Float64Array;
@@ -15,6 +16,7 @@ export interface MusicalCutSearchPlan {
 	readonly deep: boolean;
 	readonly minimumLogEnergy: number;
 	readonly waveform: MusicalCutWaveform;
+	readonly phrases?: MusicalPhraseAnalysis;
 }
 export interface MusicalCutSearchBatch {
 	readonly candidates: readonly MusicalCutCandidate[];
@@ -55,6 +57,8 @@ export function createMusicalCutContextDistance(distance: (a: number, b: number)
 }
 
 function rhythmAt(plan: MusicalCutSearchPlan, lag: number): number {
+	// Local beat positions replace a single global-period gate when phrasing has reliable evidence.
+	if (plan.phrases && plan.phrases.confidence >= 0.2) return 0;
 	return plan.beat ? Math.abs(lag * hop / plan.beat - Math.round(lag * hop / plan.beat)) : 0;
 }
 function durationAllowed(plan: MusicalCutSearchPlan, lag: number): boolean {
@@ -64,10 +68,12 @@ function durationAllowed(plan: MusicalCutSearchPlan, lag: number): boolean {
 function candidateAt(plan: MusicalCutSearchPlan, i: number, j: number, distance: number, rhythm: number): MusicalCutCandidate | null {
 	if (distance > 0.22) return null;
 	const nearSection = plan.sections.some(section => Math.abs(section - i) < 20 || Math.abs(section - j) < 20);
+	const phraseScore = plan.phrases ? musicalPhrasePairScore(plan.phrases, i, j) : undefined;
+	const phrasePenalty = phraseScore === null || phraseScore === undefined ? 0 : (plan.phrases?.confidence ?? 0) * 0.16 * (1 - phraseScore / 100);
 	// Rolling arithmetic can differ in its last bits between worker partitions and point densities.
-	const cost = Math.round((distance + rhythm * 0.15 + (nearSection ? 0 : 0.025)) * 1e12) / 1e12;
+	const cost = Math.round((distance + rhythm * 0.15 + (nearSection ? 0 : 0.025) + phrasePenalty) * 1e12) / 1e12;
 	return { startSeconds: i * hop, endSeconds: j * hop, cost, matchingSeconds: plan.context * 2 * hop, nearSection,
-		...musicalCutScores(cost, (j - i) * hop, plan.target, plan.tolerance) };
+		...musicalCutScores(cost, (j - i) * hop, plan.target, plan.tolerance), ...(plan.phrases ? { phraseScore } : {}) };
 }
 function bound(candidates: MusicalCutCandidate[]): void {
 	if (candidates.length >= 2048) candidates.splice(0, candidates.length, ...shortlistMusicalCuts(candidates, 256));
@@ -130,5 +136,8 @@ export function finishMusicalCutSearch(plan: MusicalCutSearchPlan, batches: read
 		}
 	}
 	return { candidates: selectMusicalCuts(candidates), sectionSeconds: plan.sections.map(i => i * hop), beatSeconds: plan.beat, waveform: plan.waveform,
-		search: { points: plan.points.length, pairs, distances, workers, deep: plan.deep } };
+		search: { points: plan.points.length, pairs, distances, workers, deep: plan.deep },
+		...(plan.phrases ? { phrases: { confidence: plan.phrases.confidence, beatConfidence: plan.phrases.beatConfidence,
+			meter: plan.phrases.meter, meterConfidence: plan.phrases.meterConfidence,
+			boundaries: plan.phrases.boundaries.map(point => ({ seconds: point.frame * hop, strength: point.strength })) } } : {}) };
 }

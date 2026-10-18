@@ -47,6 +47,7 @@ test.describe('musical cuts on a tablet-sized touch screen', () => {
 		await expect.poll(span).toBe(16 * 48000);
 		await join.getByRole('button', { name: 'Join', exact: true }).tap();
 		await expect.poll(span).toBe(4 * 48000);
+		await expect.poll(async () => Number(await timeline.getAttribute('data-source-position'))).toBe(Number(await timeline.getAttribute('data-cut-start-frame')) - 2 * 48000);
 		await expect(timeline).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 });
 		await join.getByRole('button', { name: 'Zoom in', exact: true }).tap();
 		const beforePan = Number(await timeline.getAttribute('data-start-frame'));
@@ -73,12 +74,34 @@ test.describe('musical cuts on a tablet-sized touch screen', () => {
 		await expect(editor).toHaveAttribute('data-clip-count', '1');
 		const apply = dialog.getByRole('button', { name: 'Apply this cut', exact: true });
 		await expect(apply).toBeDisabled();
-		await dialog.getByRole('button', { name: 'Listen to the join', exact: true }).tap();
+		await join.getByRole('button', { name: 'Play', exact: true }).tap();
 		await expect.poll(async () => await dialog.getByRole('alert').count()
 			? await dialog.getByRole('alert').innerText() : await apply.isEnabled() ? 'ready' : 'waiting',
 		{ timeout: 20_000 }).toBe('ready');
 		await expect(dialog.getByRole('alert')).toHaveCount(0);
 		await expect(join.locator('.audio-editor-musical-result__cursor')).toBeVisible();
+		await expect(join.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+		const vertical = Number(await timeline.getAttribute('data-vertical-zoom'));
+		await join.getByRole('button', { name: 'Amplitude +', exact: true }).tap();
+		await expect(timeline).toHaveAttribute('data-vertical-zoom', String(vertical + 1));
+		await join.getByRole('button', { name: 'Fit waveform height', exact: true }).tap();
+		await expect(timeline).toHaveAttribute('data-vertical-zoom', String(vertical));
+		await join.getByRole('checkbox', { name: 'Show removed section', exact: true }).check();
+		await expect(join.locator('[data-removed-audio]')).toBeVisible();
+		await expect(timeline).toHaveAttribute('data-show-removed', 'true');
+		await expect(timeline).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 });
+		const position = Number(await timeline.getAttribute('data-source-position'));
+		await join.getByRole('checkbox', { name: 'Play removed section (original)', exact: true }).check();
+		await expect(timeline).toHaveAttribute('data-original', 'true');
+		await expect(join.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+		await expect.poll(async () => Number(await timeline.getAttribute('data-source-position'))).toBeGreaterThanOrEqual(position);
+		await expect(join.locator('[data-removed-audio]')).toContainText('Included in playback');
+		await join.getByRole('checkbox', { name: 'Play removed section (original)', exact: true }).uncheck();
+		await expect(timeline).toHaveAttribute('data-original', 'false');
+		await expect(join.locator('[data-removed-audio]')).toContainText('Skipped during playback');
+		await join.getByRole('button', { name: 'Stop', exact: true }).tap();
+		await expect(join.getByRole('button', { name: 'Play', exact: true })).toBeVisible();
+		await expect(timeline).toHaveAttribute('aria-busy', 'false', { timeout: 20_000 });
 		await page.screenshot({ path: 'test-results/musical-cuts-tablet.png' });
 		await apply.tap();
 		await expect(dialog).not.toBeVisible();

@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@soundscaper/design-system/Button';
 import AudioEditorDialogShell from '../AudioEditorDialogShell.tsx';
 import { resolveSelectionRange } from '../../selection-range.ts';
-import { createMusicalCutAudition } from '../../controller/analysis/musical-cut-audition.ts';
 import { formatLocalizedTemplate as format } from '../localization-template.ts';
 import { resolveMusicalCutsCopy } from '../../../i18n/editor-musical-cuts-copy.ts';
 import { MusicalCutSourceTimeline, musicalCutTime as time } from './MusicalCutTimeline.jsx';
@@ -28,16 +27,14 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 	const [selected, setSelected] = useState(0);
 	const [heard, setHeard] = useState(null);
 	const [seekFrame, setSeekFrame] = useState(null);
-	const [playing, setPlaying] = useState(false);
+	const [transport, setTransport] = useState(null);
 	const [error, setError] = useState('');
 	const session = useRef(null);
 	const operation = useRef(null);
-	const audition = useMemo(() => createMusicalCutAudition({ createContext: () => new AudioContext(), onEnded: () => setPlaying(false) }), []);
 	const rangeAvailable = selection && (!selection.trackIds.length || selection.trackIds.includes(trackId));
 	const blocked = !ready || !snapshot.ready || snapshot.importing || snapshot.recording || snapshot.exporting || project?.readOnly;
 	const candidate = result?.candidates[selected];
 	const validRemove = remove.trim() === '' || (Number.isFinite(Number(remove)) && Number(remove) > 0);
-	const validFade = Number.isFinite(Number(fade)) && Number(fade) >= 0 && Number(fade) <= 100;
 	const showError = cause => {
 		const key = typeof cause?.code === 'string' ? `error${cause.code[0].toUpperCase()}${cause.code.slice(1)}` : '';
 		setError(messages[key] || cause?.message || copy.audioAnalysisFailed);
@@ -46,7 +43,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 		let closed = false;
 		void controller.actions.analysis.createMusicalCutsSession().then(value => {
 			if (closed) value.dispose();
-			else { session.current = value; setReady(true); }
+			else { session.current = value; setTransport(value.createTransport()); setReady(true); }
 		}).catch(cause => { if (!closed) showError(cause); });
 		return () => {
 			closed = true; operation.current?.abort(); session.current?.dispose(); session.current = null;
@@ -54,11 +51,10 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 	// The session belongs to the active project and captures each analysis revision itself.
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [controller, project?.id]);
-	useEffect(() => () => audition.dispose(), [audition]);
 	useEffect(() => {
-		operation.current?.abort(); audition.stop(); setPlaying(false); setHeard(null); setResult(null);
-	}, [project?.id, project?.revision, audition]);
-	const stop = () => { audition.stop(); setPlaying(false); };
+		operation.current?.abort(); transport?.stop(); setHeard(null); setResult(null);
+	}, [project?.id, project?.revision, transport]);
+	const stop = () => { transport?.stop(); };
 	const invalidate = () => { stop(); setResult(null); setHeard(null); setSeekFrame(null); setError(''); };
 	const perform = async (kind, action) => {
 		operation.current?.abort();
@@ -80,20 +76,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 			if (!signal.aborted) { setResult(value); setSelected(0); setSettingsOpen(!value.candidates.length); }
 		});
 	};
-	const listen = () => {
-		if (blocked || pending || !candidate || !validFade) return;
-		// Resume in the tap's activation, before async rendering (required by Android WebView).
-		const unlock = audition.unlock();
-		void perform('preview', async signal => {
-			controller.actions.transport.stop();
-			await unlock;
-			const pcm = await session.current.preview(candidate, Number(fade), signal, seekFrame === null ? undefined : seekFrame / result.sampleRate);
-			if (!signal.aborted) {
-				audition.play(pcm); setPlaying(true);
-				setHeard({ candidate, fade, startSeconds: pcm.startSeconds });
-			}
-		});
-	};
+
 	const apply = () => {
 		if (blocked || pending || !candidate || heard?.candidate !== candidate || heard?.fade !== fade) return;
 		try {
@@ -129,10 +112,9 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 			{result && <>
 				{candidate && <>
 					<MusicalCutResultTrack key={`${candidate.startSeconds}-${candidate.endSeconds}-${fade}`} session={session.current}
-						candidate={candidate} fadeMs={Number(fade)} result={result} copy={messages} seekFrame={seekFrame}
-						onSeek={frame => { stop(); setSeekFrame(frame); }} playing={playing} audition={audition} playbackStart={heard?.startSeconds ?? 0} />
+						candidate={candidate} fadeMs={Number(fade)} result={result} copy={messages} editorCopy={copy} seekFrame={seekFrame} transport={transport} blocked={blocked || Boolean(pending)} onAudition={() => setHeard({ candidate, fade })}
+						onSeek={setSeekFrame} />
 					<div className="audio-editor-musical-cuts__actions">
-						<Button variant="secondary" disabled={blocked || Boolean(pending)} onClick={playing ? stop : listen}>{playing ? messages.stop : seekFrame === null ? messages.preview : messages.listenFrom}</Button>
 						<Button disabled={blocked || Boolean(pending) || heard?.candidate !== candidate || heard?.fade !== fade} onClick={apply}>{messages.apply}</Button>
 					</div>
 				</>}

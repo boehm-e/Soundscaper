@@ -51,6 +51,18 @@ function isolateMixer(mixer: AnalysisRenderMixer): AnalysisRenderMixer {
 	};
 }
 
+/** Shared by offline analysis and the ordinary audition engine. */
+export function isolateAnalysisTrack<Project extends AnalysisRenderProject>(snapshot: Project, selectedTrackId: string | null,
+	copy: AnalysisRenderDependencies<Project, unknown>['copy']): Project {
+	const selected = snapshot.tracks.find(track => track.id === selectedTrackId);
+	if (!selected || selected.type !== 'audio') throw createLocalizedError(Error, copy, 'audioTrackRequired');
+	return { ...snapshot,
+		tracks: snapshot.tracks.map(track => track.type === 'audio' ? { ...track, mute: track.id !== selected.id, solo: false } : track),
+		master: { gain: 1, effects: [] },
+		...(snapshot.mixer ? { mixer: isolateMixer(snapshot.mixer) } : {}),
+	};
+}
+
 /** Render the selected mix on a detached document; analysis never authors mixer state. */
 export function createAnalysisRenderer<Project extends AnalysisRenderProject, Buffers>(
 	dependencies: AnalysisRenderDependencies<Project, Buffers>,
@@ -64,14 +76,7 @@ export function createAnalysisRenderer<Project extends AnalysisRenderProject, Bu
 		if (dependencies.hasMissingTimelineSources()) throw createLocalizedError(Error, dependencies.copy, 'localSourcesMissing');
 		let snapshot = dependencies.cloneProject(dependencies.getProject());
 		if (scope === 'track') {
-			const selected = snapshot.tracks.find((track) => track.id === selectedTrackId);
-			if (!selected || selected.type !== 'audio') throw createLocalizedError(Error, dependencies.copy, 'audioTrackRequired');
-			snapshot = { ...snapshot,
-				tracks: snapshot.tracks.map((track) => track.type === 'audio'
-					? { ...track, mute: track.id !== selected.id, solo: false } : track),
-				master: { gain: 1, effects: [] },
-				...(snapshot.mixer ? { mixer: isolateMixer(snapshot.mixer) } : {}),
-			};
+			snapshot = isolateAnalysisTrack(snapshot, selectedTrackId, dependencies.copy);
 		} else if (scope !== 'master') throw createLocalizedError(RangeError, dependencies.copy, 'analysisScopeInvalid');
 		return dependencies.renderSnapshot(snapshot, {
 			startFrame: range.startFrame, endFrame: range.endFrame, includeTail: false,

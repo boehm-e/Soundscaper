@@ -5,6 +5,7 @@ import type { MusicalCutCandidate, MusicalCutReport, MusicalCutRequest } from '.
 import { MUSICAL_CUT_RATE, MUSICAL_CUT_MAX_SECONDS } from '../../musical-cut-features.ts';
 import { musicalCutCommand, musicalTrackClips, MusicalCutRefusal } from '../../musical-cut-edit.ts';
 import { createMusicalCutResultWindow, type MusicalCutResultWindow } from '../../musical-cut-result-window.ts';
+import { createMusicalCutTransport, type MusicalCutPlaybackResources } from './musical-cut-transport.ts';
 import type { AnalysisAudioBuffer, AnalysisRange } from './analysis-service.ts';
 import {
 	EDITOR_PROJECT_TASK_SCOPE, type EditorControllerLifetime, type EditorProjectToken, type EditorTaskScope,
@@ -26,6 +27,8 @@ interface Dependencies<P extends Project> {
 	readonly stageCommand: (project: P, command: AudioEditorCommand) => P;
 	readonly analyze: (request: MusicalCutRequest, signal: AbortSignal) => Promise<MusicalCutReport>;
 	readonly busy: (value: boolean) => void;
+	readonly playback?: MusicalCutPlaybackResources;
+	readonly playbackProject?: (project: P, trackId: string) => Readonly<Record<string, unknown>>;
 }
 export interface MusicalCutsInput {
 	readonly trackId: string;
@@ -53,10 +56,28 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 	let result: MusicalCutsResult | null = null;
 	let owner: { project: P; revision: number; token: EditorProjectToken; input: MusicalCutsInput } | null = null;
 	let prepared: { candidate: MusicalCutCandidate; fadeMs: number; command: AudioEditorCommand; staged?: P } | null = null;
-	return Object.freeze({ analyze, preview, resultExtent, renderResultWindow, apply, dispose });
+	const transports = new Set<ReturnType<typeof createMusicalCutTransport>>();
+	return Object.freeze({ analyze, preview, resultExtent, renderResultWindow, createTransport, apply, dispose });
+
+	function createTransport() {
+		assertAlive();
+		if (!dependencies.playback || !dependencies.playbackProject) throw new Error('Musical cut playback is unavailable.');
+		const projectForPlayback = dependencies.playbackProject;
+		const transport = createMusicalCutTransport({ lifetime: dependencies.lifetime, resources: dependencies.playback,
+			assertCurrent: candidate => { assertOwner(candidate); },
+			resolve: ({ candidate, fadeMs, original }) => {
+				const { project, input } = assertOwner(candidate);
+				const source = original ? project : stagedResult(candidate, fadeMs);
+				return { project: projectForPlayback(source, input.trackId), identity: source,
+					endFrame: Math.max(...musicalTrackClips(source, input.trackId).map(clip => clip.timelineStartFrame + clip.durationFrames)) };
+			},
+		});
+		transports.add(transport); return transport;
+	}
 
 	async function analyze(input: MusicalCutsInput, signal: AbortSignal, progress: (fraction: number) => void = () => undefined): Promise<MusicalCutsResult> {
 		assertAlive();
+		for (const transport of transports) transport.stop();
 		windowTask?.abort();
 		result = null; owner = null; prepared = null;
 		const project = dependencies.getProject();
@@ -135,14 +156,14 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 	}
 
 	/** Render only the visible window, keeping at most eight seconds of full-rate PCM at once. */
-	async function renderResultWindow(candidate: MusicalCutCandidate, fadeMs: number, range: AnalysisRange, columns: number, signal: AbortSignal): Promise<MusicalCutResultWindow> {
+	async function renderResultWindow(candidate: MusicalCutCandidate, fadeMs: number, range: AnalysisRange, columns: number, signal: AbortSignal, original = false): Promise<MusicalCutResultWindow> {
 		const { project, revision, token, input } = assertOwner(candidate);
-		const extent = resultExtent(candidate, fadeMs);
+		const extent = original ? { endFrame: Math.max(...musicalTrackClips(project, input.trackId).map(clip => clip.timelineStartFrame + clip.durationFrames)) } : resultExtent(candidate, fadeMs);
 		if (!Number.isSafeInteger(range.startFrame) || !Number.isSafeInteger(range.endFrame)
 			|| range.startFrame < 0 || range.endFrame > extent.endFrame || range.endFrame <= range.startFrame) throw new MusicalCutRefusal('range');
 		const rate = dependencies.sampleRate();
 		const output = createMusicalCutResultWindow(range.startFrame, range.endFrame, rate, columns);
-		const staged = stagedResult(candidate, fadeMs);
+		const staged = original ? project : stagedResult(candidate, fadeMs);
 		windowTask?.abort();
 		const task = dependencies.lifetime.startTask('musical-cut-waveform', { scope: EDITOR_PROJECT_TASK_SCOPE });
 		windowTask = task;
@@ -165,6 +186,7 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 
 	function apply(candidate: MusicalCutCandidate, fadeMs: number, commit: (command: AudioEditorCommand) => unknown): unknown {
 		assertOwner(candidate);
+		for (const transport of transports) transport.stop();
 		const command = prepare(candidate, fadeMs);
 		const value = commit(command);
 		windowTask?.abort();
@@ -219,6 +241,8 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 	function dispose(): void {
 		if (disposed) return;
 		disposed = true;
+		for (const transport of transports) void transport.dispose().catch(() => undefined);
+		transports.clear();
 		windowTask?.abort(); windowTask = null;
 		if (active) {
 			const task = active; active = null;

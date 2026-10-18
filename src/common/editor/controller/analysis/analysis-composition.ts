@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 import { createAbsentAnalysisService } from './internal/absent-analysis-service.ts';
-import { createAnalysisRenderer, type AnalysisRenderDependencies, type AnalysisRenderProject } from './internal/analysis-renderer.ts';
+import { createAnalysisRenderer, isolateAnalysisTrack, type AnalysisRenderDependencies, type AnalysisRenderProject } from './internal/analysis-renderer.ts';
+import type { MusicalCutPlaybackResources } from './musical-cut-transport.ts';
 import type { AnalysisDependencies, AnalysisState } from './analysis-service.ts';
 import { createEditorAnalysisVisuals } from './internal/analysis-visuals.ts';
 import { createDeferredAudioAnalysisService } from './internal/deferred-analysis-service.ts';
@@ -44,6 +45,7 @@ export interface AnalysisCompositionDependencies<Project extends AnalysisProject
 	extends Omit<AnalysisRenderDependencies<Project, Buffers>, 'getProject' | 'getSelectedTrackId' | 'copy'> {
 	readonly enabled: boolean;
 	readonly stageCommand?: (project: Project, command: AudioEditorCommand) => Project;
+	readonly musicalCutPlayback?: MusicalCutPlaybackResources;
 	readonly productName: string;
 	readonly state: AnalysisCompositionState;
 	readonly copy: AnalysisDependencies['copy'] & AnalysisRenderDependencies<Project, Buffers>['copy']
@@ -132,6 +134,11 @@ export function createAnalysisComposition<Project extends AnalysisProject, Buffe
 				import('./musical-cuts-session.ts'), import('../../musical-cut-worker-client.ts'),
 			]);
 			return createMusicalCutsSession({ getProject: requireProject, sampleRate: dependencies.projectSampleRate,
+				playback: dependencies.musicalCutPlayback,
+				playbackProject: (project, trackId) => {
+					const isolated: AnalysisRenderProject = isolateAnalysisTrack(dependencies.cloneProject(project), trackId, copy);
+					return { ...isolated };
+				},
 				stageCommand: (project, command) => {
 					if (!dependencies.stageCommand) throw new Error('Musical cut preview requires the product command runtime.');
 					return dependencies.stageCommand(project, command);

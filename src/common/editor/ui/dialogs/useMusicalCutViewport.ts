@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { musicalCutViewport, zoomMusicalCutViewport, type MusicalCutViewport } from './musical-cut-viewport.ts';
 
-export function useMusicalCutViewport({ totalFrames, joinFrame, sampleRate, width, onSeek }: {
+export function useMusicalCutViewport({ totalFrames, joinFrame, joinEndFrame = joinFrame, sampleRate, width, onSeek }: {
 	readonly totalFrames: number; readonly joinFrame: number; readonly sampleRate: number; readonly width: number;
+	readonly joinEndFrame?: number;
 	readonly onSeek: (frame: number) => void;
 }) {
 	const root = useRef<HTMLDivElement>(null);
@@ -15,7 +16,8 @@ export function useMusicalCutViewport({ totalFrames, joinFrame, sampleRate, widt
 	const minimum = Math.max(1, Math.ceil(width / 8));
 	const update = useCallback((value: MusicalCutViewport) => { current.current = value; setView(value); }, []);
 	const zoom = useCallback((factor: number, anchor = 0.5) => update(zoomMusicalCutViewport(current.current, factor, anchor, totalFrames, minimum)), [minimum, totalFrames, update]);
-	const focus = () => update(musicalCutViewport(joinFrame - sampleRate * 2, sampleRate * 4, totalFrames, minimum));
+	const focus = useCallback(() => update(musicalCutViewport(joinFrame - sampleRate * 2, joinEndFrame - joinFrame + sampleRate * 4, totalFrames, minimum)), [joinFrame, joinEndFrame, sampleRate, totalFrames, minimum, update]);
+	useEffect(() => { update(musicalCutViewport(joinFrame - sampleRate * 4, joinEndFrame - joinFrame + sampleRate * 8, totalFrames)); }, [joinFrame, joinEndFrame, sampleRate, totalFrames, update]);
 	const fit = () => update({ startFrame: 0, endFrame: totalFrames });
 	const pan = (start: number) => update(musicalCutViewport(start, current.current.endFrame - current.current.startFrame, totalFrames, minimum));
 	function resetGesture(moved = false) {

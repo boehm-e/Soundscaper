@@ -5,7 +5,7 @@
 .audio-editor-musical-cuts p { margin: 0; }
 .audio-editor-musical-cuts__fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .audio-editor-musical-cuts__fields label { display: grid; gap: 6px; }
-.audio-editor-musical-cuts input:not([type="radio"]), .audio-editor-musical-cuts select {
+.audio-editor-musical-cuts input[type="number"], .audio-editor-musical-cuts select {
 	min-height: 46px; width: 100%; min-width: 0; padding: 8px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
 }
 .audio-editor-musical-cuts__actions { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -40,11 +40,23 @@
 .audio-editor-musical-result__ruler { height: 34px; pointer-events: none; }
 .audio-editor-musical-result__clip { position: static; height: 26px; min-height: 26px; padding: 3px 8px; overflow: hidden; white-space: nowrap; font-size: 12px; }
 .audio-editor-musical-result__waveforms { position: relative; height: 150px; background: var(--panel); }
-.audio-editor-musical-result__waveforms > .clip-body { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; }
+.audio-editor-musical-result__waveforms > .clip-body { position: absolute; top: 0; bottom: 0; height: 100%; border: 0; border-radius: 0; }
 .audio-editor-musical-result__waveforms canvas { display: block; width: 100%; height: 100%; }
 .audio-editor-musical-result__join { position: absolute; z-index: 5; top: 22px; bottom: 0; width: 2px; background: #a6213b; pointer-events: none; }
 .audio-editor-musical-result__join > span { position: absolute; top: 0; left: 0; transform: translateX(-50%); padding: 2px 6px; color: white; background: #a6213b; border-radius: 3px; white-space: nowrap; font-size: 11px; }
 .audio-editor-musical-result__cursor { position: absolute; z-index: 6; top: 0; bottom: 0; width: 2px; background: #168534; pointer-events: none; }
 .audio-editor-musical-result__loading { position: absolute; z-index: 7; right: 6px; bottom: 6px; padding: 4px 8px; border-radius: 4px; background: var(--panel); font-size: 12px; pointer-events: none; }
 .audio-editor-musical-result input[type='range'] { padding: 0; min-height: 28px; accent-color: #387d9f; }
-@media (max-width: 580px) { .audio-editor-musical-result__waveforms { height: 125px; } }
+
+.audio-editor-musical-result__transport .transport-button { width: 44px; height: 44px; }
+.audio-editor-musical-result__comparison { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; }
+.audio-editor-musical-result__comparison label { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
+.audio-editor-musical-result__comparison input { width: 22px; height: 22px; accent-color: #387d9f; }
+.audio-editor-musical-result__comparison [role='status'] { color: var(--muted); font-size: 12px; }
+.audio-editor-musical-result__track { display: grid; grid-template-columns: 40px minmax(0, 1fr); min-width: 0; }
+.audio-editor-musical-result__track > .audio-editor-vertical-ruler { position: static; width: 40px; min-width: 40px; height: 280px; overflow: hidden; background: var(--panel); }
+.audio-editor-musical-result__navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.audio-editor-musical-result__navigation input { flex: 1; min-width: 100px; width: auto; }
+.audio-editor-musical-result__navigation button { min-height: 44px; }
+.audio-editor-musical-result__removed { position: absolute; z-index: 4; top: 34px; bottom: 0; background: repeating-linear-gradient(135deg, #66666650, #66666650 6px, #99999950 6px, #99999950 12px); pointer-events: none; }
+.audio-editor-musical-result__removed > span { position: absolute; left: 50%; top: 40%; transform: translateX(-50%); padding: 3px 8px; border-radius: 4px; background: var(--panel); color: var(--text); font-size: 12px; white-space: nowrap; }

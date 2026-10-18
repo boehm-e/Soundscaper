@@ -2,8 +2,8 @@
 
 Open **Analyze → Find musical cuts**. Choose an audio track and either its full
 timeline span or the selection captured when the dialog opened. An optional
-duration filters suggestions to nearby removal lengths. Listen to the four-second
-join preview, then apply. One Undo restores the entire edit. Later clips on that
+duration filters suggestions to nearby removal lengths. Listen with the editor’s
+play/pause/stop controls, compare the original and the cut, then apply. One Undo restores the entire edit. Later clips on that
 track ripple earlier; other tracks retain their timing.
 
 Each proposal shows the source waveform on a common timeline scale. Its red span
@@ -16,11 +16,25 @@ min/max/RMS storage is bounded by the viewport width, and sample zoom retains
 exact PCM. No audio from the real project is changed by this preview.
 
 Pinch or use + / − to zoom, drag to pan, or use the horizontal navigation slider.
-Ctrl/Command-wheel zooms around the pointer. **Join** centers four seconds around
-the cut; **Whole track** fits the complete result. Tap with a finger or pen to
-place the preview cursor, then listen to up to four seconds from there. Without a
-cursor, listening starts two seconds before the join. Playback shows a moving
-cursor. Analysis settings collapse to give the track room.
+Ctrl/Command-wheel zooms around the pointer. **Join** centers the cut and returns the playhead two seconds before it; **Whole
+track** fits the complete result. The same amplitude ruler and waveform painter
+as the main timeline magnify quiet audio automatically on first display. Amplitude
+zoom and **Fit waveform height** change only the display, never playback gain.
+
+**Show removed section** keeps A–B on the original time axis as a grey, hatched
+region. Retained material is drawn from the exact edited render on either side;
+the grey material is drawn from the original. **Play removed section (original)**
+compares the unedited track with the edited one, keeping the corresponding source
+position when switched during playback. The result playhead skips A–B when this
+option is off. Hiding the grey section restores the compact result timeline.
+
+The standard green play/pause button, stop and jump-to-start buttons use the
+editor's normal streaming engine in a dialog-owned instance. Playback continues
+through the track; it is not limited to a four-second buffer. It shares listening
+volume, output routing and source caches with the editor. Touching the waveform
+seeks, and space toggles play/pause while it is focused. Closing cancels preparation,
+releases the engine and leaves the real project untouched. Analysis settings
+collapse to give the track room.
 
 The dialog works with ordinary buttons, radio cards and native selects, including
 touch and pen input in the Android WebView. Its controls have at least 44-pixel
@@ -69,6 +83,5 @@ optimize a complete multi-cut arrangement. Always audition the proposal.
 
 The dialog-scoped session checks the project generation and revision after each
 asynchronous render and before applying. Closing the dialog cancels its worker
-and renders, stops preview playback and closes its audio context. The preview
-context is unlocked directly from a tap before asynchronous rendering, as required
-by mobile autoplay policy. **Update AI assets is not required.**
+and renders, stops preview playback and closes its audio context. The playback context is unlocked directly from a tap before asynchronous
+cache preparation, as required by mobile autoplay policy. **Update AI assets is not required.**

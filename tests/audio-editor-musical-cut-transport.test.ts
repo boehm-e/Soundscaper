@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createMusicalCutTransport, type MusicalCutPlaybackEngine } from '../src/common/editor/controller/analysis/musical-cut-transport.ts';
 import { EditorControllerLifetime } from '../src/common/editor/controller/shared/lifecycle.ts';
-const cut = { startSeconds: 6, endSeconds: 14, cost: 0, matchingSeconds: 4, nearSection: false };
+const cut = { startSeconds: 6, endSeconds: 14, cost: 0, musicScore: 100, durationScore: null, matchingSeconds: 4, nearSection: false };
 function host(gate?: Promise<void>) {
 	const lifetime = new EditorControllerLifetime(); lifetime.markReady();
 	const events: string[] = [], original = {}, edited = {};

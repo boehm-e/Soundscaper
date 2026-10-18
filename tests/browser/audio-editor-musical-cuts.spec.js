@@ -20,6 +20,7 @@ test.describe('musical cuts on a tablet-sized touch screen', () => {
 		await expect(dialog).toBeVisible();
 		await dialog.getByRole('button', { name: 'Close', exact: true }).last().click({ trial: true });
 		await dialog.getByRole('spinbutton', { name: 'Duration to remove (seconds, optional)', exact: true }).fill('8');
+		await dialog.getByRole('spinbutton', { name: 'Duration tolerance (± seconds)', exact: true }).fill('0.3');
 		await dialog.getByRole('button', { name: 'Find cuts', exact: true }).tap();
 		await expect(dialog.getByRole('radio').first()).toBeVisible({ timeout: 40_000 });
 		const join = dialog.getByRole('region', { name: 'Result track', exact: true });
@@ -35,6 +36,14 @@ test.describe('musical cuts on a tablet-sized touch screen', () => {
 			expect(content.y).toBeGreaterThanOrEqual(bounds.y);
 			expect(content.y + content.height).toBeLessThanOrEqual(bounds.y + bounds.height);
 			expect(bounds.width).toBeLessThanOrEqual(viewport.width);
+		}
+		const selectedCard = await dialog.getByRole('radio', { checked: true }).locator('..').locator('strong').innerText();
+		const ordering = dialog.getByRole('combobox', { name: 'Sort proposals by', exact: true });
+		for (const [mode, scoreIndex] of [['duration', 1], ['average', 2], ['music', 0]]) {
+			await ordering.selectOption(mode);
+			const scores = await dialog.locator('.audio-editor-musical-cuts__scores').evaluateAll((rows, index) => rows.map(row => Number(row.children[index].textContent.match(/[\d.]+/)[0])), scoreIndex);
+			expect(scores).toEqual([...scores].sort((a, b) => b - a));
+			await expect(dialog.getByRole('radio', { checked: true }).locator('..').locator('strong')).toHaveText(selectedCard);
 		}
 		const firstJoin = await join.innerText();
 		await dialog.getByRole('radio').nth(1).tap();
@@ -110,6 +119,33 @@ test.describe('musical cuts on a tablet-sized touch screen', () => {
 		await expect(editor).toHaveAttribute('data-clip-count', '1');
 		await expect(clipByName(editor, fixture.name)).toBeVisible();
 		expect(errors).toEqual([]);
+	});
+	test('duration tolerance reaches the worker and duration sorting is unavailable without a target', async ({ page }) => {
+		const editor = await bootEditor(page, '/embed/en/');
+		await importFiles(editor, [musicalCutFixture()]);
+		await chooseCommandAction(page, editor, 'Analyze', 'Find musical cuts');
+		const dialog = page.getByRole('dialog', { name: 'Find musical cuts', exact: true });
+		const duration = dialog.getByRole('spinbutton', { name: 'Duration to remove (seconds, optional)', exact: true });
+		const tolerance = dialog.getByRole('spinbutton', { name: 'Duration tolerance (± seconds)', exact: true });
+		await expect(tolerance).toBeDisabled();
+		await duration.fill('3'); await tolerance.fill('0.2');
+		await dialog.getByRole('button', { name: 'Find cuts', exact: true }).tap();
+		await expect(dialog.getByRole('radio')).toHaveCount(0);
+		await expect(dialog.getByRole('status')).toHaveText(/No compatible cut found/, { timeout: 20_000 });
+		await tolerance.fill('1.1');
+		await dialog.getByRole('button', { name: 'Find cuts', exact: true }).tap();
+		await expect(dialog.getByRole('radio').first()).toBeVisible({ timeout: 20_000 });
+		await dialog.getByRole('combobox', { name: 'Sort proposals by', exact: true }).selectOption('duration');
+		await dialog.getByText('Analysis settings', { exact: true }).tap();
+		await duration.fill(''); await expect(tolerance).toBeDisabled();
+		await dialog.getByRole('button', { name: 'Find cuts', exact: true }).tap();
+		await expect(dialog.getByRole('radio').first()).toBeVisible({ timeout: 20_000 });
+		const sort = dialog.getByRole('combobox', { name: 'Sort proposals by', exact: true });
+		await expect(sort).toHaveValue('music');
+		await expect(sort.locator('option[value="duration"]')).toHaveJSProperty('disabled', true);
+		await expect(sort.locator('option[value="average"]')).toHaveJSProperty('disabled', true);
+		await expect(dialog.locator('.audio-editor-musical-cuts__scores').first()).toContainText('Duration: —/100');
+		await expect(dialog.getByRole('alert')).toHaveCount(0);
 	});
 	test.describe('French phone layout', () => {
 		test.use({ viewport: { width: 390, height: 844 } });

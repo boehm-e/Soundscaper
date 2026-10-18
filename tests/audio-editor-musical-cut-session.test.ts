@@ -4,6 +4,7 @@ import test from 'node:test';
 import { applyEditorCommand } from '../src/common/editor/commands.js';
 import { createAudioClip, createAudioSource, createAudioTrack } from '../src/common/editor/project-media-factory.ts';
 import { createAudioEditorProjectV17 } from '../src/common/editor/project-v17.ts';
+import { createMusicalCutResultWindow } from '../src/common/editor/musical-cut-result-window.ts';
 import { musicalCutCommand, musicalTrackClips } from '../src/common/editor/musical-cut-edit.ts';
 import { createMusicalCutsSession } from '../src/common/editor/controller/analysis/musical-cuts-session.ts';
 import { EditorControllerLifetime, EditorProjectGeneration } from '../src/common/editor/controller/shared/lifecycle.ts';
@@ -80,7 +81,7 @@ test('the production Soundscaper schema uses the injected product runtime for th
 			const channel = new Float32Array(range.endFrame - range.startFrame).fill(0.2);
 			return { sampleRate: rate, numberOfChannels: 1, length: channel.length, getChannelData: () => channel };
 		},
-		analyze: async () => ({ candidates: [{ startSeconds: 4, endSeconds: 12, cost: 0, matchingSeconds: 4, nearSection: false }], sectionSeconds: [], beatSeconds: 0.5 }),
+		analyze: async () => ({ candidates: [{ startSeconds: 4, endSeconds: 12, cost: 0, musicScore: 100, durationScore: null, matchingSeconds: 4, nearSection: false }], sectionSeconds: [], beatSeconds: 0.5 }),
 	});
 	const report = await session.analyze({ trackId: 'track', range: { startFrame: rate * 2, endFrame: rate * 22 } }, new AbortController().signal);
 	await session.preview(report.candidates[0], 20, new AbortController().signal);
@@ -89,7 +90,7 @@ test('the production Soundscaper schema uses the injected product runtime for th
 	session.dispose();
 });
 
-function harness(renderGate?: Promise<void>) {
+function harness(renderGate?: Promise<void>, sample?: (frame: number) => number) {
 	let current = project();
 	const lifetime = new EditorControllerLifetime(); lifetime.markReady();
 	const generation = new EditorProjectGeneration(); generation.activate(current.id);
@@ -102,10 +103,11 @@ function harness(renderGate?: Promise<void>) {
 		render: async (p, range, signal) => {
 			await renderGate;
 			signal.throwIfAborted(); renders.push({ ...range, revision: p.revision });
-			const channel = new Float32Array(range.endFrame - range.startFrame).fill(0.2);
+			const channel = sample ? Float32Array.from({ length: range.endFrame - range.startFrame }, (_, i) => sample(range.startFrame + i))
+				: new Float32Array(range.endFrame - range.startFrame).fill(0.2);
 			return { sampleRate: rate, numberOfChannels: 1, length: channel.length, getChannelData: () => channel };
 		},
-		analyze: async () => ({ candidates: [{ startSeconds: 4, endSeconds: 12, cost: 0, matchingSeconds: 4, nearSection: false }],
+		analyze: async () => ({ candidates: [{ startSeconds: 4, endSeconds: 12, cost: 0, musicScore: 100, durationScore: null, matchingSeconds: 4, nearSection: false }],
 			sectionSeconds: [8], beatSeconds: 0.5 }),
 	});
 	return { session, lifetime, generation, busy, renders, hold: (gate: Promise<void>) => { renderGate = gate; }, change: () => { current = { ...current, revision: current.revision + 1 }; }, getProject: () => current };
@@ -207,4 +209,54 @@ test('superseded, stale and closed result windows never publish a late render', 
 		if (newer) assert.equal((await newer).channels[0].maximum.length, 400);
 		h.session.dispose();
 	}
+});
+
+test('cached waveform windows and aligned PCM avoid rerenders across zoom, pan and before/after revisits', async () => {
+	const h = harness(), signal = new AbortController().signal;
+	const report = await h.session.analyze({ trackId: 'track', toleranceSeconds: 5 }, signal), cut = report.candidates[0];
+	const range = { startFrame: rate * 4, endFrame: rate * 7 };
+	const first = await h.session.renderResultWindow(cut, 20, range, 800, signal);
+	const count = h.renders.length;
+	assert.equal(await h.session.renderResultWindow(cut, 20, range, 800, signal), first);
+	const panned = await h.session.renderResultWindow(cut, 20, { startFrame: rate * 5, endFrame: rate * 8 }, 400, signal);
+	assert.equal(panned.channels[0].maximum.length, 400);
+	assert.equal(h.renders.length, count);
+	await h.session.renderResultWindow(cut, 20, range, 800, signal, true);
+	assert.equal(h.renders.length, count + 1);
+	await h.session.renderResultWindow(cut, 20, range, 800, signal);
+	assert.equal(h.renders.length, count + 1);
+	await h.session.renderResultWindow(cut, 50, range, 800, signal);
+	assert.equal(h.renders.length, count + 2);
+	const aborted = new AbortController(); aborted.abort();
+	await assert.rejects(h.session.renderResultWindow(cut, 20, range, 800, aborted.signal), { name: 'AbortError' });
+	h.change();
+	await assert.rejects(h.session.renderResultWindow(cut, 20, range, 800, signal), /stale/);
+	h.session.dispose();
+});
+test('rerunning analysis clears waveform caches and rejects old candidates', async () => {
+	const h = harness(), signal = new AbortController().signal;
+	const first = await h.session.analyze({ trackId: 'track' }, signal);
+	const range = { startFrame: rate * 4, endFrame: rate * 7 };
+	await h.session.renderResultWindow(first.candidates[0], 20, range, 800, signal);
+	const second = await h.session.analyze({ trackId: 'track' }, signal), count = h.renders.length;
+	await assert.rejects(h.session.renderResultWindow(first.candidates[0], 20, range, 800, signal), /stale/);
+	await h.session.renderResultWindow(second.candidates[0], 20, range, 800, signal);
+	assert.equal(h.renders.length, count + 1);
+	h.session.dispose();
+});
+
+test('cached blocks preserve exact sample positions and min/max/RMS when a viewport crops a block', async () => {
+	const sample = (frame: number) => Math.sin(frame * 0.03);
+	const h = harness(undefined, sample), signal = new AbortController().signal;
+	const report = await h.session.analyze({ trackId: 'track' }, signal), cut = report.candidates[0];
+	await h.session.renderResultWindow(cut, 20, { startFrame: rate * 4, endFrame: rate * 7 }, 800, signal);
+	const count = h.renders.length, from = rate * 5 + 13, to = from + 100;
+	const pcm = Float32Array.from({ length: to - from }, (_, i) => sample(from + i));
+	const exact = await h.session.renderResultWindow(cut, 20, { startFrame: from, endFrame: to }, 100, signal);
+	assert.deepEqual(exact.pcm?.[0], pcm);
+	const expected = createMusicalCutResultWindow(from, to, rate, 20); expected.append([pcm]);
+	const summary = await h.session.renderResultWindow(cut, 20, { startFrame: from, endFrame: to }, 20, signal);
+	assert.deepEqual(summary, expected.finish());
+	assert.equal(h.renders.length, count);
+	h.session.dispose();
 });

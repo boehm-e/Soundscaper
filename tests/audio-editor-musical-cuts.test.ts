@@ -14,7 +14,7 @@ function music(seconds = 24, inverted = false) {
 	});
 }
 test('finds repeated musical sequences at the requested duration, with room to audition both sides', () => {
-	const result = analyzeMusicalCuts({ channels: [music()], sampleRate: rate, removeSeconds: 8 });
+	const result = analyzeMusicalCuts({ channels: [music()], sampleRate: rate, removeSeconds: 8, toleranceSeconds: 0.32 });
 	assert.ok(result.candidates.length > 0);
 	assert.equal(result.waveform?.durationSeconds, 24);
 	for (const cut of result.candidates) {
@@ -27,7 +27,7 @@ test('stereo polarity does not cancel the musical analysis', () => {
 	assert.ok(analyzeMusicalCuts({ channels: [music(), music(24, true)], sampleRate: rate }).candidates.length > 0);
 });
 test('matching isolated tones cannot override incompatible surrounding musical phrases', () => {
-	assert.deepEqual(analyzeMusicalCuts({ channels: [music()], sampleRate: rate, removeSeconds: 3 }).candidates, []);
+	assert.deepEqual(analyzeMusicalCuts({ channels: [music()], sampleRate: rate, removeSeconds: 3, toleranceSeconds: 0.2 }).candidates, []);
 });
 test('silence, very short audio and impossible target durations return no fabricated matches', () => {
 	for (const channels of [[new Float32Array(rate * 10)], [music(2)]]) {
@@ -39,4 +39,18 @@ test('rejects malformed or excessive input before allocating feature matrices', 
 	assert.throws(() => analyzeMusicalCuts({ channels: [], sampleRate: rate }), /audio/i);
 	assert.throws(() => analyzeMusicalCuts({ channels: [music()], sampleRate: NaN }), /rate/i);
 	assert.throws(() => analyzeMusicalCuts({ channels: [music()], sampleRate: rate, removeSeconds: -1 }), /duration/i);
+});
+
+test('a flexible duration recovers musical transitions that a narrow target excludes', () => {
+	const narrow = analyzeMusicalCuts({ channels: [music()], sampleRate: rate, removeSeconds: 3, toleranceSeconds: 0.2 });
+	const flexible = analyzeMusicalCuts({ channels: [music()], sampleRate: rate, removeSeconds: 3, toleranceSeconds: 1.1 });
+	assert.equal(narrow.candidates.length, 0);
+	assert.ok(flexible.candidates.length > 0);
+	for (const cut of flexible.candidates) {
+	 assert.ok(Math.abs(cut.endSeconds - cut.startSeconds - 3) <= 1.1 + 1e-8);
+	 assert.ok(cut.musicScore >= 0 && cut.musicScore <= 100);
+	 assert.ok(cut.durationScore !== null && cut.durationScore >= 0 && cut.durationScore <= 100);
+	}
+	assert.throws(() => analyzeMusicalCuts({ channels: [music()], sampleRate: rate, toleranceSeconds: -1 }), /tolerance/);
+	assert.throws(() => analyzeMusicalCuts({ channels: [music()], sampleRate: rate, toleranceSeconds: Infinity }), /tolerance/);
 });

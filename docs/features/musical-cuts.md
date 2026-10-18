@@ -2,7 +2,7 @@
 
 Open **Analyze → Find musical cuts**. Choose an audio track and either its full
 timeline span or the selection captured when the dialog opened. An optional
-duration filters suggestions to nearby removal lengths. Listen with the editor’s
+duration and its ± tolerance filter suggestions to an explicit removal range (default ±5 seconds; zero requires the target on the 50 ms analysis grid). Listen with the editor’s
 play/pause/stop controls, compare the original and the cut, then apply. One Undo restores the entire edit. Later clips on that
 track ripple earlier; other tracks retain their timing.
 
@@ -41,6 +41,28 @@ touch and pen input in the Android WebView. Its controls have at least 44-pixel
 targets. Opening it does not change the timeline selection. Analysis never
 uploads audio or downloads models.
 
+Each proposal displays separate **Music** and **Duration** indices out of 100, plus
+their arithmetic average when a target exists. Music is `100 × (1 − musical cost)`,
+clamped to 0–100; that cost combines sequence distance, beat alignment and section
+proximity without any duration penalty. Duration is 100 at the target and falls
+linearly to 0 at the selected tolerance boundary. These are heuristic comparison
+indices, not probabilities or a guarantee of an inaudible join. Without a target,
+the duration index is unavailable and only musical sorting is enabled.
+
+**Sort proposals by** reorders by musical compatibility, duration match or their
+equal-weight average without analyzing again or changing the selected proposal.
+The bounded search retains contenders for all three orderings, including during
+intermediate pruning, rather than sorting only the musical top twelve.
+
+Waveform rendering has a dialog-local LRU cache: up to 4 MiB / 128 completed
+windows and 24 MiB / 64 full-rate PCM blocks, separately bounded. Aligned eight-second
+blocks can be reused across overlapping pan/zoom windows; tiny uncached sample
+views render only their requested interval. Completed views remain cached even
+after PCM eviction. Original material is shared between proposals; edited data
+is keyed by cut endpoints and crossfade. Only completed, current renders enter
+the cache. Analysis restart, apply, project invalidation or closing clears it.
+A first uncached view still requires rendering; revisits can reuse those results.
+
 ## Analysis
 
 `musical-cuts-session.ts` renders the chosen track in eight-second chunks, retaining
@@ -54,7 +76,7 @@ by the signal; this is not a downbeat or meter detector.
 Candidates compare sequences before and after both endpoints, covering four
 estimated beats on each side (two seconds per side without a beat estimate).
 Ranking combines harmonic/timbral/level similarity, beat-phase consistency,
-proximity to possible section changes and the optional duration constraint.
+and proximity to possible section changes. The optional duration is a separate filter and index.
 Section changes are coarse novelty peaks, not semantic verse/chorus labels or a
 hierarchical segmentation. Search has bounded anchors and shortlist memory; it
 does not allocate a full sample-by-sample or frame-by-frame recurrence matrix.

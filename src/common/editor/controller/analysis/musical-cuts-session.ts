@@ -5,6 +5,7 @@ import type { MusicalCutCandidate, MusicalCutReport, MusicalCutRequest } from '.
 import { MUSICAL_CUT_RATE, MUSICAL_CUT_MAX_SECONDS } from '../../musical-cut-features.ts';
 import { musicalCutCommand, musicalTrackClips, MusicalCutRefusal } from '../../musical-cut-edit.ts';
 import { createMusicalCutResultWindow, type MusicalCutResultWindow } from '../../musical-cut-result-window.ts';
+import { createMusicalCutRenderCache } from './internal/musical-cut-render-cache.ts';
 import { createMusicalCutTransport, type MusicalCutPlaybackResources } from './musical-cut-transport.ts';
 import type { AnalysisAudioBuffer, AnalysisRange } from './analysis-service.ts';
 import {
@@ -34,6 +35,7 @@ export interface MusicalCutsInput {
 	readonly trackId: string;
 	readonly range?: AnalysisRange;
 	readonly removeSeconds?: number;
+	readonly toleranceSeconds?: number;
 }
 export interface MusicalCutsResult extends MusicalCutReport {
 	readonly range: AnalysisRange;
@@ -56,6 +58,7 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 	let result: MusicalCutsResult | null = null;
 	let owner: { project: P; revision: number; token: EditorProjectToken; input: MusicalCutsInput } | null = null;
 	let prepared: { candidate: MusicalCutCandidate; fadeMs: number; command: AudioEditorCommand; staged?: P } | null = null;
+	const cache = createMusicalCutRenderCache();
 	const transports = new Set<ReturnType<typeof createMusicalCutTransport>>();
 	return Object.freeze({ analyze, preview, resultExtent, renderResultWindow, createTransport, apply, dispose });
 
@@ -79,7 +82,7 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 		assertAlive();
 		for (const transport of transports) transport.stop();
 		windowTask?.abort();
-		result = null; owner = null; prepared = null;
+		result = null; owner = null; prepared = null; cache.clear();
 		const project = dependencies.getProject();
 		const revision = project.revision;
 		const token = dependencies.captureProject();
@@ -92,6 +95,7 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 		const seconds = (endFrame - startFrame) / rate;
 		if (seconds > MUSICAL_CUT_MAX_SECONDS || seconds < 5) throw new MusicalCutRefusal('length');
 		if (input.removeSeconds !== undefined && (!Number.isFinite(input.removeSeconds) || input.removeSeconds <= 0)) throw new MusicalCutRefusal('range');
+		if (input.toleranceSeconds !== undefined && (!Number.isFinite(input.toleranceSeconds) || input.toleranceSeconds < 0 || input.toleranceSeconds > MUSICAL_CUT_MAX_SECONDS)) throw new MusicalCutRefusal('range');
 		const task = begin();
 		const combined = AbortSignal.any([signal, task.signal]);
 		try {
@@ -117,7 +121,7 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 				}
 				progress((to - startFrame) / (endFrame - startFrame) * 0.8);
 			}
-			const report = await dependencies.analyze({ channels: planes, sampleRate: MUSICAL_CUT_RATE, removeSeconds: input.removeSeconds }, combined);
+			const report = await dependencies.analyze({ channels: planes, sampleRate: MUSICAL_CUT_RATE, removeSeconds: input.removeSeconds, toleranceSeconds: input.toleranceSeconds }, combined);
 			assertCurrent(task, project.id, revision, token, combined);
 			result = { ...report, range: { startFrame, endFrame }, sampleRate: rate, trackEndFrame: Math.max(...clips.map(clip => clip.timelineStartFrame + clip.durationFrames)),
 				candidates: report.candidates.map(cut => ({ ...cut,
@@ -162,22 +166,41 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 		if (!Number.isSafeInteger(range.startFrame) || !Number.isSafeInteger(range.endFrame)
 			|| range.startFrame < 0 || range.endFrame > extent.endFrame || range.endFrame <= range.startFrame) throw new MusicalCutRefusal('range');
 		const rate = dependencies.sampleRate();
+		// Validate columns before any cache access, including exact-window hits.
 		const output = createMusicalCutResultWindow(range.startFrame, range.endFrame, rate, columns);
+		windowTask?.abort(); signal.throwIfAborted();
+		const variant = original ? 'original' : `${candidate.startSeconds}:${candidate.endSeconds}:${fadeMs}`;
+		const key = `${variant}:${range.startFrame}:${range.endFrame}:${columns}`;
+		const cached = cache.windows.get(key);
+		if (cached) return cached;
 		const staged = original ? project : stagedResult(candidate, fadeMs);
-		windowTask?.abort();
 		const task = dependencies.lifetime.startTask('musical-cut-waveform', { scope: EDITOR_PROJECT_TASK_SCOPE });
 		windowTask = task;
 		const combined = AbortSignal.any([signal, task.signal]);
 		try {
 			combined.throwIfAborted();
-			for (let from = range.startFrame; from < range.endFrame; from += rate * 8) {
-				const to = Math.min(range.endFrame, from + rate * 8);
-				const buffer = await dependencies.render(staged, { startFrame: from, endFrame: to }, combined, input.trackId);
+			const block = rate * 8;
+			for (let from = Math.floor(range.startFrame / block) * block; from < range.endFrame; from += block) {
+				const to = Math.min(extent.endFrame, from + block);
+				const chunkKey = `${variant}:${from}:${to}`;
+				let chunk = cache.chunks.get(chunkKey);
+				if (!chunk) {
+					// Keep sample-level navigation small when no reusable full block exists.
+					const small = range.endFrame - range.startFrame < rate;
+					const startFrame = small ? Math.max(from, range.startFrame) : from;
+					const endFrame = small ? Math.min(to, range.endFrame) : to;
+					const buffer = await dependencies.render(staged, { startFrame, endFrame }, combined, input.trackId);
+					assertCurrent(task, project.id, revision, token, combined);
+					if (buffer.sampleRate !== rate || buffer.length !== endFrame - startFrame || buffer.numberOfChannels < 1 || buffer.numberOfChannels > 2) throw new MusicalCutRefusal('range');
+					chunk = { startFrame, endFrame, channels: Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch)) };
+					if (!small) cache.chunks.set(chunkKey, chunk);
+				}
 				assertCurrent(task, project.id, revision, token, combined);
-				if (buffer.sampleRate !== rate || buffer.length !== to - from || buffer.numberOfChannels < 1 || buffer.numberOfChannels > 2) throw new MusicalCutRefusal('range');
-				output.append(Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch)));
+				const first = Math.max(range.startFrame, chunk.startFrame) - chunk.startFrame;
+				const last = Math.min(range.endFrame, chunk.endFrame) - chunk.startFrame;
+				output.append(chunk.channels.map(plane => plane.subarray(first, last)));
 			}
-			return output.finish();
+			const window = output.finish(); cache.windows.set(key, window); return window;
 		} finally {
 			if (windowTask === task) windowTask = null;
 			task.finish();
@@ -190,7 +213,7 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 		const command = prepare(candidate, fadeMs);
 		const value = commit(command);
 		windowTask?.abort();
-		result = null; owner = null; prepared = null;
+		result = null; owner = null; prepared = null; cache.clear();
 		return value;
 	}
 	function stagedResult(candidate: MusicalCutCandidate, fadeMs: number): P {
@@ -212,8 +235,10 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 	function assertOwner(candidate: MusicalCutCandidate) {
 		assertAlive();
 		if (!owner || !result?.candidates.includes(candidate)) throw new MusicalCutRefusal('stale');
-		dependencies.assertProject(owner.token);
-		if (dependencies.getProject().id !== owner.project.id || dependencies.getProject().revision !== owner.revision) throw new MusicalCutRefusal('stale');
+		try {
+			dependencies.assertProject(owner.token);
+			if (dependencies.getProject().id !== owner.project.id || dependencies.getProject().revision !== owner.revision) throw new MusicalCutRefusal('stale');
+		} catch (cause) { cache.clear(); throw cause; }
 		return owner;
 	}
 	function assertAlive(): void {
@@ -249,6 +274,6 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 			try { task.assertCurrent(); dependencies.busy(false); } catch { /* Replaced task. */ }
 			task.abort(); task.finish();
 		}
-		result = null; owner = null; prepared = null;
+		result = null; owner = null; prepared = null; cache.clear();
 	}
 }

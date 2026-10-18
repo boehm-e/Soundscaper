@@ -17,6 +17,9 @@
 .audio-editor-musical-cuts__proposal:has(input:checked) { border-color: #66d3c5; background: #66d3c518; }
 .audio-editor-musical-cuts__proposal input { width: 22px; height: 22px; flex: none; accent-color: #66d3c5; }
 .audio-editor-musical-cuts__proposal > span { display: grid; gap: 5px; flex: 1; min-width: 0; }
+.audio-editor-musical-cuts__scores { display: flex; flex-wrap: wrap; gap: 4px 16px; font-weight: 600; }
+.audio-editor-musical-cuts__sort { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.audio-editor-musical-cuts__sort select { width: auto; max-width: 100%; }
 .audio-editor-musical-cuts progress { display: block; width: 100%; margin-top: 8px; }
 .audio-editor-musical-cuts summary { min-height: 44px; cursor: pointer; padding-block: 10px; }
 .audio-editor-musical-cuts__settings[open] { display: grid; gap: 12px; }

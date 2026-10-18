@@ -3,17 +3,21 @@ import {
 	musicalCutFeatures, musicalFrameDistance, MUSICAL_CUT_HOP_SECONDS as hop,
 	MUSICAL_CUT_MAX_SECONDS, type MusicalFrame,
 } from './musical-cut-features.ts';
+import { musicalCutScores, shortlistMusicalCuts, selectMusicalCuts } from './musical-cut-ranking.ts';
 import { musicalCutWaveform, type MusicalCutWaveform } from './musical-cut-waveform.ts';
 
 export interface MusicalCutRequest {
 	readonly channels: readonly Float32Array[];
 	readonly sampleRate: number;
 	readonly removeSeconds?: number;
+	readonly toleranceSeconds?: number;
 }
 export interface MusicalCutCandidate {
 	readonly startSeconds: number;
 	readonly endSeconds: number;
 	readonly cost: number;
+	readonly musicScore: number;
+	readonly durationScore: number | null;
 	readonly matchingSeconds: number;
 	readonly nearSection: boolean;
 }
@@ -30,7 +34,8 @@ export function analyzeMusicalCuts(request: MusicalCutRequest): MusicalCutReport
 	const duration = request.channels[0].length / request.sampleRate;
 	const waveform = musicalCutWaveform(request.channels, request.sampleRate);
 	const empty: MusicalCutReport = { candidates: [], sectionSeconds: [], beatSeconds: null, waveform };
-	if (duration < 5 || (request.removeSeconds ?? 0) > duration - 2) return empty;
+	const tolerance = request.toleranceSeconds ?? 5;
+	if (duration < 5 || (request.removeSeconds ?? 0) - tolerance > duration - 2) return empty;
 	const features = musicalCutFeatures(request.channels, request.sampleRate);
 	const maxEnergy = Math.max(...features.map(frame => frame.energy));
 	if (maxEnergy < 1e-5) return empty;
@@ -51,13 +56,12 @@ export function analyzeMusicalCuts(request: MusicalCutRequest): MusicalCutReport
 	const sampled = anchors.filter((_, index) => index % stride === 0);
 	const scored: MusicalCutCandidate[] = [];
 	const target = request.removeSeconds;
-	const tolerance = target === undefined ? Infinity : Math.max(0.2, Math.min(1, target * 0.04));
 	for (let a = 0; a < sampled.length; a++) {
 		for (let b = a + 1; b < sampled.length; b++) {
 			const i = sampled[a], j = sampled[b];
 			const removed = (j - i) * hop;
 			if (removed < Math.max(1, (beat ?? 0.5) * 2)) continue;
-			if (target !== undefined && Math.abs(removed - target) > tolerance) continue;
+			if (target !== undefined && Math.abs(removed - target) > tolerance + 1e-8) continue;
 			if (musicalFrameDistance(features[i], features[j]) > 0.3) continue;
 			const rhythm = beat ? Math.abs(removed / beat - Math.round(removed / beat)) : 0;
 			if (beat && rhythm > 0.18) continue;
@@ -69,35 +73,28 @@ export function analyzeMusicalCuts(request: MusicalCutRequest): MusicalCutReport
 			distance /= Math.ceil(context * 2 / 4);
 			if (distance > 0.22) continue;
 			const nearSection = sections.some(section => Math.abs(section - i) < 20 || Math.abs(section - j) < 20);
-			const cost = distance + rhythm * 0.15 + (nearSection ? 0 : 0.025)
-				+ (target === undefined ? 0 : Math.abs(removed - target) / tolerance * 0.025);
+			const cost = distance + rhythm * 0.15 + (nearSection ? 0 : 0.025);
 			scored.push({ startSeconds: i * hop, endSeconds: j * hop, cost,
+				...musicalCutScores(cost, removed, target, tolerance),
 				matchingSeconds: context * 2 * hop, nearSection });
 			// Repetitive tracks can match almost every pair: retain a bounded shortlist.
 			if (scored.length >= 2048) {
-				scored.sort((left, right) => left.cost - right.cost || left.startSeconds - right.startSeconds);
-				scored.length = 256;
+				scored.splice(0, scored.length, ...shortlistMusicalCuts(scored, 256));
 			}
 		}
 	}
-	scored.sort((a, b) => a.cost - b.cost || a.startSeconds - b.startSeconds || a.endSeconds - b.endSeconds);
-	const candidates: MusicalCutCandidate[] = [];
-	for (const candidate of scored) {
-		if (candidates.some(other => Math.abs(other.startSeconds - candidate.startSeconds) < 1.5
-			&& Math.abs(other.endSeconds - candidate.endSeconds) < 1.5)) continue;
-		candidates.push(candidate);
-		if (candidates.length === 12) break;
-	}
+	const candidates = selectMusicalCuts(scored);
 	return { candidates, sectionSeconds: sections.map(i => i * hop), beatSeconds: beat, waveform };
 }
 
-function validate({ channels, sampleRate, removeSeconds }: MusicalCutRequest): void {
+function validate({ channels, sampleRate, removeSeconds, toleranceSeconds }: MusicalCutRequest): void {
 	if (!Number.isFinite(sampleRate) || sampleRate < 4000 || sampleRate > 48000) throw new RangeError('Invalid analysis sample rate.');
 	if (!channels.length || channels.length > 2 || channels.some(channel => !(channel instanceof Float32Array)
 		|| channel.length !== channels[0].length || channel.length > sampleRate * MUSICAL_CUT_MAX_SECONDS)) {
 		throw new RangeError('Analyze up to 10 minutes of mono or stereo audio at a time.');
 	}
 	if (removeSeconds !== undefined && (!Number.isFinite(removeSeconds) || removeSeconds <= 0)) throw new RangeError('Invalid removal duration.');
+	if (toleranceSeconds !== undefined && (!Number.isFinite(toleranceSeconds) || toleranceSeconds < 0 || toleranceSeconds > MUSICAL_CUT_MAX_SECONDS)) throw new RangeError('Invalid duration tolerance.');
 	for (const channel of channels) for (const sample of channel) {
 		if (!Number.isFinite(sample)) throw new RangeError('Audio contains non-finite samples.');
 	}

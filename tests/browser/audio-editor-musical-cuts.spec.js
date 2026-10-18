@@ -135,8 +135,17 @@ test.describe('musical cuts on a tablet-sized touch screen', () => {
 		await tolerance.fill('1.1');
 		await dialog.getByRole('button', { name: 'Find cuts', exact: true }).tap();
 		await expect(dialog.getByRole('radio').first()).toBeVisible({ timeout: 20_000 });
+		const fastPoints = Number((await dialog.getByText(/analysis points$/).innerText()).match(/\d+/)[0]);
+		await dialog.getByText('Analysis settings', { exact: true }).tap();
+		const deep = dialog.getByRole('checkbox', { name: /Deep search/ });
+		await deep.check();
+		await dialog.getByRole('button', { name: 'Find cuts', exact: true }).tap();
+		await expect(dialog.getByRole('radio').first()).toBeVisible({ timeout: 20_000 });
+		const deepPoints = Number((await dialog.getByText(/analysis points$/).innerText()).match(/\d+/)[0]);
+		expect(deepPoints).toBeGreaterThan(fastPoints);
 		await dialog.getByRole('combobox', { name: 'Sort proposals by', exact: true }).selectOption('duration');
 		await dialog.getByText('Analysis settings', { exact: true }).tap();
+		await deep.uncheck();
 		await duration.fill(''); await expect(tolerance).toBeDisabled();
 		await dialog.getByRole('button', { name: 'Find cuts', exact: true }).tap();
 		await expect(dialog.getByRole('radio').first()).toBeVisible({ timeout: 20_000 });
@@ -146,6 +155,28 @@ test.describe('musical cuts on a tablet-sized touch screen', () => {
 		await expect(sort.locator('option[value="average"]')).toHaveJSProperty('disabled', true);
 		await expect(dialog.locator('.audio-editor-musical-cuts__scores').first()).toContainText('Duration: —/100');
 		await expect(dialog.getByRole('alert')).toHaveCount(0);
+	});
+	test('a long deep search uses bounded parallel workers and remains cancellable', async ({ page }) => {
+		test.setTimeout(90_000);
+		const editor = await bootEditor(page, '/embed/en/');
+		await importFiles(editor, [musicalCutFixture(120)]);
+		const analysisWorkers = [];
+		page.on('worker', worker => { if (worker.url().includes('musical-cut-worker-entry')) analysisWorkers.push(worker); });
+		await chooseCommandAction(page, editor, 'Analyze', 'Find musical cuts');
+		const dialog = page.getByRole('dialog', { name: 'Find musical cuts', exact: true });
+		await dialog.getByRole('checkbox', { name: /Deep search/ }).check();
+		await dialog.getByRole('button', { name: 'Find cuts', exact: true }).tap();
+		await expect(dialog.getByRole('radio').first()).toBeVisible({ timeout: 40_000 });
+		const points = Number((await dialog.getByText(/analysis points$/).innerText()).match(/\d+/)[0]);
+		expect(points).toBeGreaterThan(1500);
+		expect(analysisWorkers).toHaveLength(4);
+		await dialog.getByText('Analysis settings', { exact: true }).tap();
+		await dialog.getByRole('button', { name: 'Find cuts', exact: true }).tap();
+		await dialog.getByRole('button', { name: 'Cancel analysis', exact: true }).tap();
+		await expect(dialog.getByRole('button', { name: 'Find cuts', exact: true })).toBeEnabled();
+		await expect(dialog.getByRole('radio')).toHaveCount(0);
+		await expect(dialog.getByRole('alert')).toHaveCount(0);
+		await expect(editor).toHaveAttribute('data-clip-count', '1');
 	});
 	test.describe('French phone layout', () => {
 		test.use({ viewport: { width: 390, height: 844 } });

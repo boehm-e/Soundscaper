@@ -9,7 +9,7 @@ const clamp = (value: number) => Math.max(0, Math.min(100, value));
 export function musicalCutScores(cost: number, removed: number, target: number | undefined, tolerance: number) {
 	const error = target === undefined ? 0 : Math.abs(removed - target);
 	return { musicScore: clamp(100 * (1 - cost)), durationScore: target === undefined ? null
-		: tolerance === 0 ? (error <= 1e-8 ? 100 : 0) : clamp(100 * (1 - error / tolerance)) };
+		: tolerance === 0 ? (error <= 1e-8 ? 100 : 0) : clamp(100 - 20 * (error / tolerance) ** 2) };
 }
 
 export function musicalCutRank(candidate: MusicalCutCandidate, sort: MusicalCutSort): number {

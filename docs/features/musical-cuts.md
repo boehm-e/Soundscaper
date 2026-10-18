@@ -45,7 +45,7 @@ Each proposal displays separate **Music** and **Duration** indices out of 100, p
 their arithmetic average when a target exists. Music is `100 × (1 − musical cost)`,
 clamped to 0–100; that cost combines sequence distance, beat alignment and section
 proximity without any duration penalty. Duration is 100 at the target and falls
-linearly to 0 at the selected tolerance boundary. These are heuristic comparison
+quadratically to 80 at the selected tolerance boundary (`100 − 20 × (error / tolerance)²`). This keeps accepted duration indices on a scale comparable to musical compatibility, instead of overwhelming the average with a 0–100 range. These are heuristic comparison
 indices, not probabilities or a guarantee of an inaudible join. Without a target,
 the duration index is unavailable and only musical sorting is enabled.
 
@@ -78,7 +78,16 @@ estimated beats on each side (two seconds per side without a beat estimate).
 Ranking combines harmonic/timbral/level similarity, beat-phase consistency,
 and proximity to possible section changes. The optional duration is a separate filter and index.
 Section changes are coarse novelty peaks, not semantic verse/chorus labels or a
-hierarchical segmentation. Search has bounded anchors and shortlist memory; it
+hierarchical segmentation. Standard search retains at most 900 anchors. **Deep search** retains those same
+anchors plus a denser grid (up to 6,000 points total), then refines the best diverse
+proposals within ±250 ms at the native 50 ms feature resolution. It improves
+coverage; it does not infer vocal phrase boundaries.
+
+Search groups pairs by their time separation. Duration bounds and beat-phase
+rejections apply before visiting endpoints. Four rolling context sums reuse
+neighboring sequence comparisons, and precomputed logarithmic levels avoid
+per-comparison logarithms. Memory stays bounded by features, a per-lag rolling
+window and the shortlist; it
 does not allocate a full sample-by-sample or frame-by-frame recurrence matrix.
 
 This independent implementation draws on the sequence-comparison motivation in
@@ -87,6 +96,15 @@ not implement their full hierarchical segmentation, learned embeddings, downbeat
 tracking or optimal multi-transition path search. No source or models from
 [music-rearranger](https://github.com/chrispla/music-rearranger) are bundled;
 that repository has separate licenses, including a noncommercial restriction.
+
+Deep search extracts FFT features once in a dedicated worker. Search uses two
+workers on devices reporting at least four logical cores when the estimated search is large enough. Smaller searches finish in the preparation worker, avoiding extra startup and feature-copy overhead. Devices with fewer cores always use one. Only the
+compact feature representation is copied to each search worker; downsampled track
+PCM is transferred once. Workers receive interleaved time-separation partitions;
+their bounded shortlists are merged before a final worker refines endpoints.
+Cancellation or a shard failure terminates all active peers. Standard search
+keeps its single-worker path. No SharedArrayBuffer, server, model download or
+cross-origin isolation is required.
 
 ## Applying and previewing
 

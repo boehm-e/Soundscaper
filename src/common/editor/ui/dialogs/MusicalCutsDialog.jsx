@@ -20,6 +20,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 	const [scope, setScope] = useState(selection ? 'selection' : 'track');
 	const [remove, setRemove] = useState('');
 	const [tolerance, setTolerance] = useState('5');
+	const [deepSearch, setDeepSearch] = useState(false);
 	const [sort, setSort] = useState(/** @returns {import('../../musical-cut-ranking.ts').MusicalCutSort} */ () => 'music');
 	const [fade, setFade] = useState('20');
 	const [ready, setReady] = useState(false);
@@ -79,6 +80,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 				range: scope === 'selection' && rangeAvailable ? selection : undefined,
 				removeSeconds: remove.trim() === '' ? undefined : Number(remove),
 				toleranceSeconds: remove.trim() === '' ? undefined : Number(tolerance),
+				deepSearch,
 			}, signal, value => { if (!signal.aborted) setProgress(value); });
 			if (!signal.aborted) { setResult(value); setSelected(0); if (remove.trim() === '') setSort('music'); setSettingsOpen(!value.candidates.length); }
 		});
@@ -93,6 +95,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 	return <AudioEditorDialogShell title={messages.title} onClose={onClose} width={960} closeOnOutside={false}>
 		<div className="audio-editor-musical-cuts">
 			<p>{result?.candidates.length ? messages.visualHelp : messages.help}</p>
+			{result?.search && <p className="audio-editor-panel-hint">{format(messages.searchSummary, { points: result.search.points })}</p>}
 			<details className="audio-editor-musical-cuts__settings" open={settingsOpen} onToggle={event => setSettingsOpen(event.currentTarget.open)}>
 				<summary>{messages.settings}</summary>
 			<div className="audio-editor-musical-cuts__fields">
@@ -110,6 +113,7 @@ export default function MusicalCutsDialog({ controller, snapshot, copy, onClose 
 				<label>{messages.fade}<select value={fade} disabled={Boolean(pending)} onChange={event => { setFade(event.target.value); stop(); setHeard(null); }}>
 					{[0, 5, 10, 20, 50, 100].map(value => <option key={value} value={value}>{`${value} ms`}</option>)}
 				</select></label>
+				<label className="audio-editor-musical-cuts__deep"><input type="checkbox" checked={deepSearch} disabled={Boolean(pending)} onChange={event => { setDeepSearch(event.target.checked); invalidate(); }} /><span>{messages.deepSearch}<small>{messages.deepSearchHelp}</small></span></label>
 			</div>
 			<p className="audio-editor-panel-hint">{messages.toleranceHelp}</p>
 			<div className="audio-editor-musical-cuts__actions">

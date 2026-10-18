@@ -9,7 +9,9 @@ const cut = (start: number, cost: number, removed: number): MusicalCutCandidate 
 test('musical compatibility is independent from target fit; exact tolerance and absent targets stay finite', () => {
 	assert.equal(musicalCutScores(0.1, 64, 60, 5).musicScore, 90);
 	assert.equal(musicalCutScores(0.1, 60, 60, 5).musicScore, 90);
-	assert.ok(Math.abs(musicalCutScores(0.1, 64, 60, 5).durationScore! - 20) < 1e-8);
+	assert.ok(Math.abs(musicalCutScores(0.1, 64, 60, 5).durationScore! - 87.2) < 1e-8);
+	assert.equal(musicalCutScores(0.1, 62.5, 60, 5).durationScore, 95);
+	assert.equal(musicalCutScores(0.1, 65, 60, 5).durationScore, 80);
 	assert.equal(musicalCutScores(0.1, 60, 60, 0).durationScore, 100);
 	assert.equal(musicalCutScores(0.1, 60, undefined, 5).durationScore, null);
 });

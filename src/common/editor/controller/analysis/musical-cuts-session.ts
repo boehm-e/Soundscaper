@@ -36,6 +36,7 @@ export interface MusicalCutsInput {
 	readonly range?: AnalysisRange;
 	readonly removeSeconds?: number;
 	readonly toleranceSeconds?: number;
+	readonly deepSearch?: boolean;
 }
 export interface MusicalCutsResult extends MusicalCutReport {
 	readonly range: AnalysisRange;
@@ -121,7 +122,7 @@ export function createMusicalCutsSession<P extends Project>(dependencies: Depend
 				}
 				progress((to - startFrame) / (endFrame - startFrame) * 0.8);
 			}
-			const report = await dependencies.analyze({ channels: planes, sampleRate: MUSICAL_CUT_RATE, removeSeconds: input.removeSeconds, toleranceSeconds: input.toleranceSeconds }, combined);
+			const report = await dependencies.analyze({ channels: planes, sampleRate: MUSICAL_CUT_RATE, removeSeconds: input.removeSeconds, toleranceSeconds: input.toleranceSeconds, deepSearch: input.deepSearch }, combined);
 			assertCurrent(task, project.id, revision, token, combined);
 			result = { ...report, range: { startFrame, endFrame }, sampleRate: rate, trackEndFrame: Math.max(...clips.map(clip => clip.timelineStartFrame + clip.durationFrames)),
 				candidates: report.candidates.map(cut => ({ ...cut,

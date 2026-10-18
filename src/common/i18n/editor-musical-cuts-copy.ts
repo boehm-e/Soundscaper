@@ -3,6 +3,9 @@ import { resolveEditorCopyScope } from './editor-copy-scope.ts';
 
 export const MUSICAL_CUTS_COPY_BY_LOCALE = Object.freeze({
 	en: Object.freeze({
+		searchSummary: "{points} analysis points",
+		deepSearch: "Deep search",
+		deepSearchHelp: "Up to 6,000 points plus local refinement. Takes longer; keeps the interface responsive.",
 		tolerance: "Duration tolerance (± seconds)",
 		toleranceHelp: "For example, 60 s with ±5 s searches from 55 to 65 s. Zero requires the target duration.",
 		sort: "Sort proposals by",
@@ -12,7 +15,7 @@ export const MUSICAL_CUTS_COPY_BY_LOCALE = Object.freeze({
 		musicScore: "Music: {score}/100",
 		durationScore: "Duration: {score}/100",
 		averageScore: "Average: {score}/100",
-		scoreHelp: "Comparison indices, not probabilities. Duration scores 100 at the target and 0 at the tolerance limit. The average gives both scores equal weight.",
+		scoreHelp: "Comparison indices, not probabilities. Duration scores 100 at the target and 80 at the tolerance limit, with a gradual penalty. The average gives both scores equal weight.",
 		noDurationScore: "No target duration: only musical compatibility is scored.",
 		showRemoved: "Show removed section",
 		listenOriginal: "Play removed section (original)",
@@ -70,6 +73,9 @@ export const MUSICAL_CUTS_COPY_BY_LOCALE = Object.freeze({
 		errorEmpty: "This track has no audio clips.",
 	}),
 	de: Object.freeze({
+		searchSummary: "{points} Analysepunkte",
+		deepSearch: "Gründliche Suche",
+		deepSearchHelp: "Bis zu 6.000 Punkte und lokale Verfeinerung. Dauert länger; die Oberfläche bleibt bedienbar.",
 		tolerance: "Dauertoleranz (± Sekunden)",
 		toleranceHelp: "Zum Beispiel sucht 60 s mit ±5 s zwischen 55 und 65 s. Null verlangt die Zieldauer.",
 		sort: "Vorschläge sortieren nach",
@@ -79,7 +85,7 @@ export const MUSICAL_CUTS_COPY_BY_LOCALE = Object.freeze({
 		musicScore: "Musik: {score}/100",
 		durationScore: "Dauer: {score}/100",
 		averageScore: "Mittelwert: {score}/100",
-		scoreHelp: "Vergleichswerte, keine Wahrscheinlichkeiten. Die Dauer erhält am Ziel 100 und an der Toleranzgrenze 0 Punkte. Beide Werte zählen im Mittel gleich.",
+		scoreHelp: "Vergleichswerte, keine Wahrscheinlichkeiten. Die Dauer erhält am Ziel 100 und an der Toleranzgrenze 80 Punkte, mit sanftem Abzug. Beide Werte zählen im Mittel gleich.",
 		noDurationScore: "Ohne Zieldauer wird nur die musikalische Übereinstimmung bewertet.",
 		showRemoved: "Entfernten Abschnitt anzeigen",
 		listenOriginal: "Entfernten Abschnitt abspielen (Original)",

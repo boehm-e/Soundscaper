@@ -3,7 +3,7 @@ import {
 	musicalCutFeatures, musicalFrameDistance, MUSICAL_CUT_HOP_SECONDS as hop,
 	MUSICAL_CUT_MAX_SECONDS, type MusicalFrame,
 } from './musical-cut-features.ts';
-import { musicalCutScores, shortlistMusicalCuts, selectMusicalCuts } from './musical-cut-ranking.ts';
+import { finishMusicalCutSearch, searchMusicalCutPlan, type MusicalCutSearchPlan } from './musical-cut-search.ts';
 import { musicalCutWaveform, type MusicalCutWaveform } from './musical-cut-waveform.ts';
 
 export interface MusicalCutRequest {
@@ -11,6 +11,7 @@ export interface MusicalCutRequest {
 	readonly sampleRate: number;
 	readonly removeSeconds?: number;
 	readonly toleranceSeconds?: number;
+	readonly deepSearch?: boolean;
 }
 export interface MusicalCutCandidate {
 	readonly startSeconds: number;
@@ -26,65 +27,47 @@ export interface MusicalCutReport {
 	readonly sectionSeconds: readonly number[];
 	readonly beatSeconds: number | null;
 	readonly waveform?: MusicalCutWaveform;
+	readonly search?: Readonly<{ points: number; pairs: number; distances: number; workers: number; deep: boolean }>;
 }
 
-/** Independent lightweight DSP. See docs/features/musical-cuts.md for method and research references. */
+/** Synchronous reference entry; browser orchestration can partition the same search plan. */
 export function analyzeMusicalCuts(request: MusicalCutRequest): MusicalCutReport {
+	const plan = prepareMusicalCutSearch(request);
+	return finishMusicalCutSearch(plan, [searchMusicalCutPlan(plan)], 1);
+}
+
+/** FFT/features run once; workers receive this compact representation, never copies of track PCM. */
+export function prepareMusicalCutSearch(request: MusicalCutRequest): MusicalCutSearchPlan {
 	validate(request);
 	const duration = request.channels[0].length / request.sampleRate;
 	const waveform = musicalCutWaveform(request.channels, request.sampleRate);
-	const empty: MusicalCutReport = { candidates: [], sectionSeconds: [], beatSeconds: null, waveform };
 	const tolerance = request.toleranceSeconds ?? 5;
-	if (duration < 5 || (request.removeSeconds ?? 0) - tolerance > duration - 2) return empty;
-	const features = musicalCutFeatures(request.channels, request.sampleRate);
-	const maxEnergy = Math.max(...features.map(frame => frame.energy));
-	if (maxEnergy < 1e-5) return empty;
-	const beat = beatPeriod(features);
-	const sections = sectionBoundaries(features);
+	const features = duration < 5 || (request.removeSeconds ?? 0) - tolerance > duration - 2 ? []
+		: musicalCutFeatures(request.channels, request.sampleRate);
+	const peak = Math.max(0, ...features.map(frame => frame.energy));
+	const frames = peak < 1e-5 ? [] : features;
+	const beat = frames.length ? beatPeriod(frames) : null;
+	const sections = frames.length ? sectionBoundaries(frames) : [];
 	const context = Math.max(20, Math.round((beat ? beat * 4 : 2) / hop));
 	const margin = Math.max(context, 20);
-	const anchors: number[] = [];
-	// Local onsets offer rhythm-aligned anchors; a sparse grid also covers sustained music.
-	for (let i = margin; i < features.length - margin; i++) {
-		if (features[i].energy < maxEnergy * 0.02) continue;
-		const peak = features[i].onset > 0 && features[i].onset >= features[i - 1].onset
-			&& features[i].onset > features[i + 1].onset;
-		if (peak || i % 10 === 0) anchors.push(i);
+	const anchors: number[] = [], dense: number[] = [];
+	for (let i = margin; i < frames.length - margin; i++) {
+		if (frames[i].energy < peak * 0.02) continue;
+		const onset = frames[i].onset > 0 && frames[i].onset >= frames[i - 1].onset && frames[i].onset > frames[i + 1].onset;
+		if (onset || i % 10 === 0) anchors.push(i);
+		if (request.deepSearch) dense.push(i);
 	}
-	// Bound pair search independently of recording length, without an N² recurrence matrix.
 	const stride = Math.max(1, Math.ceil(anchors.length / 900));
-	const sampled = anchors.filter((_, index) => index % stride === 0);
-	const scored: MusicalCutCandidate[] = [];
-	const target = request.removeSeconds;
-	for (let a = 0; a < sampled.length; a++) {
-		for (let b = a + 1; b < sampled.length; b++) {
-			const i = sampled[a], j = sampled[b];
-			const removed = (j - i) * hop;
-			if (removed < Math.max(1, (beat ?? 0.5) * 2)) continue;
-			if (target !== undefined && Math.abs(removed - target) > tolerance + 1e-8) continue;
-			if (musicalFrameDistance(features[i], features[j]) > 0.3) continue;
-			const rhythm = beat ? Math.abs(removed / beat - Math.round(removed / beat)) : 0;
-			if (beat && rhythm > 0.18) continue;
-			let distance = 0;
-			// Compare a complete sequence on BOTH sides, not just an isolated chord/beat.
-			for (let k = -context; k < context; k += 4) {
-				distance += musicalFrameDistance(features[i + k], features[j + k]);
-			}
-			distance /= Math.ceil(context * 2 / 4);
-			if (distance > 0.22) continue;
-			const nearSection = sections.some(section => Math.abs(section - i) < 20 || Math.abs(section - j) < 20);
-			const cost = distance + rhythm * 0.15 + (nearSection ? 0 : 0.025);
-			scored.push({ startSeconds: i * hop, endSeconds: j * hop, cost,
-				...musicalCutScores(cost, removed, target, tolerance),
-				matchingSeconds: context * 2 * hop, nearSection });
-			// Repetitive tracks can match almost every pair: retain a bounded shortlist.
-			if (scored.length >= 2048) {
-				scored.splice(0, scored.length, ...shortlistMusicalCuts(scored, 256));
-			}
-		}
-	}
-	const candidates = selectMusicalCuts(scored);
-	return { candidates, sectionSeconds: sections.map(i => i * hop), beatSeconds: beat, waveform };
+	const sparse = anchors.filter((_, index) => index % stride === 0);
+	const points = request.deepSearch ? [...new Set([...sparse, ...sample(dense, 6000 - sparse.length)])].sort((a, b) => a - b) : sparse;
+	// Float64 retains the existing normalized features and precomputed log-level precision.
+	const packed = new Float64Array(frames.length * 19);
+	frames.forEach((frame, i) => { packed.set(frame.chroma, i * 19); packed.set(frame.bands, i * 19 + 12); packed[i * 19 + 18] = Math.log(frame.energy + 1e-8); });
+	return { packed, points, sections, context, beat, tolerance, target: request.removeSeconds, minimumLogEnergy: Math.log(peak * 0.02 + 1e-8), deep: request.deepSearch === true, waveform };
+}
+function sample(values: readonly number[], maximum: number): number[] {
+	if (values.length <= maximum) return [...values];
+	return Array.from({ length: maximum }, (_, i) => values[Math.floor(i * values.length / maximum)]);
 }
 
 function validate({ channels, sampleRate, removeSeconds, toleranceSeconds }: MusicalCutRequest): void {

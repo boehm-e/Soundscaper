@@ -4,6 +4,7 @@
 		"analysis/analysis-composition.ts",
 		"analysis/analysis-service.ts",
 		"analysis/musical-cut-transport.ts",
+		"analysis/musical-cut-worker-pool.ts",
 		"analysis/musical-cuts-session.ts",
 		"analysis/transient-analysis-pcm-access.ts",
 		"analysis/transient-analysis-service.ts",
